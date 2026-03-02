@@ -922,7 +922,7 @@ class EvalableList(list[T], Evalable["EvalableList[T]"], Generic[T]):
             ]
         )
 
-    def __getitem__(self, key: str | int | slice, _pretty_error: bool = False) -> T:
+    def __getitem__(self, key: str | int | slice, _pretty_error: bool = True) -> T:
         if isinstance(key, int):
             return super().__getitem__(key)  # type: ignore
 

@@ -273,10 +273,10 @@ class Compatibility(Updatable):
         assert isinstance(self.tensors, fzs)
         assert isinstance(self.splits, fzs)
         assert isinstance(self.reservation_indices, fzs)
-        assert (
-            max(self.reservation_indices, default=-1) <= self.n_loops
-        ), f"Extra reservation indices {self.reservation_indices} are greater than n_loops {self.n_loops}"
         if self.check_reservation_indices:
+            assert (
+                max(self.reservation_indices, default=-1) <= self.n_loops
+            ), f"Extra reservation indices {self.reservation_indices} are greater than n_loops {self.n_loops}"
             p = f"are not in reservation indices {self.reservation_indices}"
             assert all(
                 i >= 0 for i in self.reservation_indices
@@ -338,6 +338,7 @@ class Compatibility(Updatable):
     def clear_dead_tensors(
         self,
         live_tensors: set[str] | Literal["All"],
+        keep_reservation_indices_and_splits: bool = False,
     ) -> "Compatibility":
         """
         Return a new compatibility with "dead" tensors removed by:
@@ -352,18 +353,22 @@ class Compatibility(Updatable):
 
         remaining_tensors = fzs(s for s in self.tensors if s.name in live_tensors)
         new_n_loops = max((len(s.loops) for s in remaining_tensors), default=0)
-        new_splits = fzs(
-            split for split in self.splits if split.above_loop_index < new_n_loops
-        )
-        reservation_indices = fzs(
-            {min(i, new_n_loops) for i in self.reservation_indices}
-        )
-        reservation_indices = fzs(x for x in reservation_indices if x >= 0)
+        splits, reservation_indices = self.splits, self.reservation_indices
+        if not keep_reservation_indices_and_splits:
+            splits = fzs(s for s in splits if s.above_loop_index < new_n_loops)
+            reservation_indices = fzs(
+                {min(i, new_n_loops) for i in self.reservation_indices}
+            )
+            reservation_indices = fzs(x for x in reservation_indices if x >= 0)
 
+        new_check_reservation_indices = (
+            self.check_reservation_indices and not keep_reservation_indices_and_splits
+        )
         return self.update(
             tensors=remaining_tensors,
-            splits=new_splits,
+            splits=splits,
             reservation_indices=reservation_indices,
+            check_reservation_indices=new_check_reservation_indices,
         )
 
     def __lt__(self, other):
@@ -383,8 +388,12 @@ class Compatibility(Updatable):
         right: "Compatibility",
         live_tensors: set[str],
     ) -> "Compatibility":
-        self_freed = self.clear_dead_tensors(live_tensors)
-        right_freed = right.clear_dead_tensors(live_tensors)
+        self_freed = self.clear_dead_tensors(
+            live_tensors, keep_reservation_indices_and_splits=True
+        )
+        right_freed = right.clear_dead_tensors(
+            live_tensors, keep_reservation_indices_and_splits=True
+        )
         if self_freed.n_loops > right_freed.n_loops:
             # This can be relaxed if we have a way to do order-independent joining
             # and/or non-looptree mappings.
@@ -400,9 +409,9 @@ class Compatibility(Updatable):
         # TODO: split handling?
         joined = Compatibility(
             tensors=tensors_a | tensors_b,
-            reservation_indices=self_freed.reservation_indices
-            | right_freed.reservation_indices,
-        )
+            reservation_indices=self.reservation_indices | right.reservation_indices,
+            check_reservation_indices=False,
+        ).clear_dead_tensors(live_tensors)
 
         return joined
 

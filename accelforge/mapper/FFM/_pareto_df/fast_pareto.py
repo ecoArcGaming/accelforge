@@ -1,4 +1,8 @@
 """
+NOTE: This was entirely written by Claude. I gave it the paretoset Python library + some
+optimization ideas to try out. Check out this library for something human-made:
+https://pypi.org/project/paretoset.
+
 Fast Pareto front computation.
 Handles min, max, diff, min_per_prime_factor, max_per_prime_factor goals.
 
@@ -9,6 +13,7 @@ SFS + Block-BNL (block size 16) with:
 - Pair-packed int64 encoding for float32 diff columns
 - Per-group varying-column detection, 1D/2D special paths
 - Window-min quick-check + block-min pruning
+
 """
 
 import numpy as np

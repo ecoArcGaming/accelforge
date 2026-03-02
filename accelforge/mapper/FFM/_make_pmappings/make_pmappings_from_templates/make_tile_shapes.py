@@ -898,13 +898,42 @@ def coalesce_symbols(
 
 def get_tile_shape_choices(
     objectives: list[Objective],
+    alt_objectives: list[Objective],
     symbols: list[Symbol],
     what_tiles_symbol: SymbolRelations,
     job: "Job",
     keep_symbols: list[Symbol] = (),
-    alt_objectives: list[Objective] = (),
     max_loop_check_groups: list[tuple[Number, list[Symbol]]] = (),
 ):
+    """
+    Get the tile shape choices for the given objectives.
+
+    Explaining objectives versus alt_objectives: A mapping is pruned if it can be
+    concluded suboptimal EITHER by objectives OR alt_objectives. Usually objectives
+    includes things like energy and latency, while alt_objectives includes action
+    counts. We know that minimizing all action counts leads to minimum energy and
+    latency, but often we can get better pruning by pruning using both sets of formulas.
+
+
+    Parameters
+    ----------
+    objectives : list[Objective]
+        The objectives for which to optimize.
+    alt_objectives : list[Objective]
+        A second set of objectives for which to optimize.
+    symbols : list[Symbol]
+        Symbols to pick
+    what_tiles_symbol : SymbolRelations
+        Which symbol(s) are tiling which others. Also includes direct numbers if any
+        tile shapes are numeric.
+    job : Job
+        The mapper job
+    keep_symbols : list[Symbol]
+        Symbols to keep all values for. Will not prune anything if they have different
+        choices for these symbols.
+    max_loop_check_groups : list[tuple[Number, list[Symbol]]]
+        The groups of symbols to check for loops.
+    """
     objectives = [copy.deepcopy(o) for o in objectives]
     alt_objectives = [copy.deepcopy(o) for o in alt_objectives]
     max_loop_check_groups = [g for g in max_loop_check_groups if g[0] < len(g[1])]
@@ -1876,6 +1905,14 @@ def _make_tile_shapes(job: "Job"):
     # ==================================================================================
     # Other objectives.
     # ==================================================================================
+    alt_objectives = list(objectives)
+
+    # Set up two options for objectives. One way is for us to measure the overall
+    # objectives so far. The other way is for us to minimize the number of actions,
+    # which leads to minimum energy and latency. We'll use BOTH to optimize; if we can
+    # conclude that a mapping has reduced latency and energy, grab it, and if we can
+    # conclude it has lower action counts for all actions, it must have lower energy and
+    # latency, so also grab it.
     for k, v in symbolic_df.items():
         if "Total" not in k:
             continue
@@ -1888,8 +1925,6 @@ def _make_tile_shapes(job: "Job"):
                 terms_do_not_cross_zero="energy" in k or "latency" in k,
             )
         )
-
-    alt_objectives = []
     for k, v in actions_df.items():
         alt_objectives.append(
             Objective(name=k, formula=v, symbols=symbols, terms_do_not_cross_zero=True)

@@ -951,7 +951,7 @@ def get_tile_shape_choices(
     # the outer loops, so it does those symbols (which end up multiplying our choices)
     # last. Outer to inner is faster if there's no symbols to keep because that's what
     # happened on exactly one workload that Tanner tested.
-    TILE_SHAPE_ORDER = "inner_to_outer_min_loops_to_track_one_rv_at_a_time"
+    TILE_SHAPE_ORDER = "inner_to_outer"  # "min_loops_to_track_one_rv_at_a_time"
 
     # For imperfect, we make inner tile shapes, then create outer tile shapes that are
     # multiples of the non-residual part of the inner tile shape. This way, the very
@@ -1272,7 +1272,7 @@ def get_tile_shape_choices(
         # Assume that optimizing for objectives and optimizing for alt_objectives will
         # yield the same results. Generally, alt_objectives will be the objective
         # function chosen by the user, while alt_objectives will be actions.
-        for cur_objectives in [objectives, alt_objectives]:
+        for cur_objectives in [alt_objectives, objectives]:
             # ==========================================================================
             # Create initial Pareto-finding goals
             # ==========================================================================

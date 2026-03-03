@@ -1,9 +1,10 @@
 import functools
 from math import ceil, comb
 import functools
+import math
+import numbers
 import pandas as pd
 import numpy as np
-import sympy
 
 
 @functools.lru_cache(maxsize=None)
@@ -62,10 +63,16 @@ def _count_factorizations(n, into_n_parts, imperfect=False):
 
 def fillna_and_numeric_cast(df: pd.DataFrame, value: float) -> pd.DataFrame:
     def _is_float(x) -> bool:
-        return isinstance(x, (np.floating, float, sympy.Float)) or _is_int(x)
+        return isinstance(x, numbers.Real) or (
+            isinstance(x, numbers.Real) and math.isnan(x)
+        )
 
     def _is_int(x) -> bool:
-        return isinstance(x, (np.integer, int, sympy.Integer)) or x is np.nan
+        return (
+            isinstance(x, numbers.Integral)
+            or isinstance(x, numbers.Real)
+            and (math.isnan(x) or int(x) == x)
+        )
 
     for col in df.columns:
         # If it's an object col and all of them are integers, convert to int. nans count

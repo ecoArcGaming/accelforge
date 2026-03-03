@@ -273,7 +273,7 @@ def prime_factor_counts(arr: np.ndarray) -> np.ndarray:
     result = np.zeros((len(arr), len(all_primes)), dtype=int)
     prime_index = {p: j for j, p in enumerate(all_primes)}
 
-    for i, x in enumerate(arr):
+    for i, x in enumerate(arr.flatten()):
         for p, exp in factorizations[x].items():
             result[i, prime_index[p]] = exp
 

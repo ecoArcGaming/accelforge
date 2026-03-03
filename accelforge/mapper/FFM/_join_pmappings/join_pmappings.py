@@ -263,9 +263,10 @@ def get_memories_to_track(
             if name_nloops is None or name_nloops[0] not in ignore:
                 keep_cols.append(col)
         run_pareto = len(keep_cols) < len(data.columns)
+        data = data[keep_cols].copy() if len(keep_cols) < len(data.columns) else data
         return PmappingGroup(
             s.compatibility,
-            s.mappings.update(data=data[keep_cols], skip_pareto=not run_pareto),
+            s.mappings.update(data=data, skip_pareto=not run_pareto),
         )
 
     for a in sorted(always_below):

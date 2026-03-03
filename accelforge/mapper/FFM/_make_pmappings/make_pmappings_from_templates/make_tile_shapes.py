@@ -1748,13 +1748,19 @@ def _calculate_iterations_and_rank_columns(
                     outer_initial = outer_stride
 
         outer_initial = (
-            df[outer_initial.name]
+            df[outer_initial.name].astype(np.int64)
             if isinstance(outer_initial, Symbol)
             else outer_stride
         )
 
-        rank_var_stride = df[stride.name] if isinstance(stride, Symbol) else stride
-        rank_var_initial = df[initial.name] if isinstance(initial, Symbol) else initial
+        rank_var_stride = (
+            df[stride.name].astype(np.int64) if isinstance(stride, Symbol) else stride
+        )
+        rank_var_initial = (
+            df[initial.name].astype(np.int64)
+            if isinstance(initial, Symbol)
+            else initial
+        )
 
         # NOTE: The concept of having one "n_iterations" is precarious when imperfect
         # factorization in involved

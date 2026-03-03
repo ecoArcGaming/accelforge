@@ -104,8 +104,7 @@ class PmappingDataframe:
         resource_usage_precision: float = 0,
         objective_precision: float = 0,
     ):
-        self._data: pd.DataFrame = data
-        reduce_precision(self._data)
+        self._data: pd.DataFrame = reduce_precision(data)
         self.right_reservations: dict[set] = None
         self.left_reservations: dict[set] = None
         self._prev_free_to_loop_index = None

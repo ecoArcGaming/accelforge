@@ -92,7 +92,10 @@ class OptimalityThresholder:
         for c in self.compare_to:
             nondominated = np.zeros(len(mapping), dtype=bool)
             for k, v in c.items():
-                nondominated |= mapping[k] <= v
+                if k not in mapping.columns:
+                    nondominated |= True
+                else:
+                    nondominated |= mapping[k] <= v
             nondominated_by_all &= nondominated
 
         if self._pmapping_row_filter_function is not None:

@@ -1,4 +1,5 @@
 from accelforge.mapper.FFM._join_pmappings.compatibility import Compatibility
+from copy import deepcopy
 from collections import defaultdict
 import itertools
 import logging
@@ -144,7 +145,7 @@ def clean_compress_and_join_pmappings(
                     pg.mappings.resource_usage_precision = threshold
 
             joined = join_pmappings(
-                compressed,
+                deepcopy(compressed),
                 pmappings.spec,
                 _pmapping_row_filter_function=filter_func,
                 print_progress=print_progress,

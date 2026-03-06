@@ -1612,6 +1612,9 @@ class Mapping(Nested):
     _n_loop_orders: int | None = None
     """ Used for counting number of unique mappings. Do not touch. """
 
+    _template_index: int | None = None
+    """ Used for tracking which mapping is which. """
+
     def remove_reservations(self):
         self.nodes = [n for n in self.nodes if not isinstance(n, Reservation)]
 
@@ -1778,6 +1781,13 @@ class Mapping(Nested):
         for pmapping in pmappings:
             pmapping._beautify_loops(rank_variable_bounds)
 
+        import os
+
+        no_join = (
+            _NO_JOIN_MAPPING_VISUALIZATION
+            or os.environ.get("NO_JOIN_MAPPING_VISUALIZATION", "False") == "True"
+        )
+
         while len(pmappings) > 1:
             highest_n_shared_loops = 0
             highest_shared_pmapping_index = 0
@@ -1804,7 +1814,7 @@ class Mapping(Nested):
                 highest_shared_pmapping_index
             ]._merge(
                 pmappings.pop(highest_shared_pmapping_index + 1),
-                0 if _NO_JOIN_MAPPING_VISUALIZATION else highest_n_shared_loops,
+                0 if no_join else highest_n_shared_loops,
             )
 
         mapping: Mapping = cls(nodes=pmappings[0].nodes)

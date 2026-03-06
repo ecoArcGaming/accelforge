@@ -90,11 +90,31 @@ def map_workload_to_arch(
         local_spec = deepcopy(spec)
         local_spec.model.metrics = local_spec.mapper.info_metrics
         local_spec.mapping = mappings.data.iloc[i]["Total<SEP>mapping"]()
-        this_mapping = evaluate_mapping(
-            local_spec,
-            flattened_arches=mappings.flattened_arches,
-            evaluated_specs=mappings.evaluated_specs,
-        )
+        try:
+            this_mapping = evaluate_mapping(
+                local_spec,
+                flattened_arches=mappings.flattened_arches,
+                evaluated_specs=mappings.evaluated_specs,
+            )
+        except:
+            # import os
+            # os.makedirs(f"error_{i}", exist_ok=True)
+            # for c in mappings.data.columns:
+            #     if "mapping" in c and c != "Total<SEP>mapping":
+            #         svg = mappings.data.iloc[i][c].render()
+            #         with open(f"error_{i}/{c}_{mappings.data.iloc[i][c]._template_index}.svg", "w") as f:
+            #             f.write(svg)
+            # with open(f"error_{i}/mapping.svg", "w") as f:
+            #     f.write(mappings.data.iloc[i]["Total<SEP>mapping"].render())
+            # import accelforge
+            # import os
+            # # add to the environment variable
+            # os.environ["NO_JOIN_MAPPING_VISUALIZATION"] = "True"
+            # mapping = mappings.data.iloc[i]["Total<SEP>mapping"]()
+            # accelforge.frontend.mapping._NO_JOIN_MAPPING_VISUALIZATION = True
+            # with open(f"error_{i}/mapping_unzipped.svg", "w") as f:
+            #     f.write(mapping.render())
+            raise
         return i, this_mapping.data
 
     results = [None] * len(mappings.data)

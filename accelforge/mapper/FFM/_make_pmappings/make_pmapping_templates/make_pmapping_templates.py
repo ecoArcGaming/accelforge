@@ -426,6 +426,7 @@ def make_pmapping_templates(job: Job, print_progress: bool = True) -> SameEinsum
             continue
         new_job = copy.copy(job)
         new_job.mapping = mapping
+        new_job.mapping._template_index = i
         new_job.constraints = constraints
         new_job.job_id = uuid.uuid4()
         new_job.rank_variable_bounds = job.rank_variable_bounds

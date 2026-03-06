@@ -9,7 +9,6 @@ from accelforge.frontend.mapping import MappingNode, Toll, TensorHolder
 from accelforge.frontend.spec import Spec
 from accelforge.frontend.workload import TensorName, SymbolTable
 from accelforge.util._eval_expressions import MATH_FUNCS
-from accelforge.util._setexpressions import eval_set_expression
 
 from accelforge.mapper.FFM._make_pmappings.make_pmapping_templates.make_storages import (
     make_storage_choices_all_levels,
@@ -106,6 +105,7 @@ def get_tensor_order_constraint(
     nodes, symbol_table, tensors, prioritize_reuse_of_unfused_tensors: bool
 ):
     required_order: dict[str, list[Order]] = {}
+    seen_tensors = set()
     for node in nodes:
         if isinstance(node, arch.Container):
             continue
@@ -118,23 +118,10 @@ def get_tensor_order_constraint(
         tensor_order_options = list(node_tensors.tensor_order_options)
         if prioritize_reuse_of_unfused_tensors and not tensor_order_options:
             tensor_order_options.append(
-                [
-                    eval_set_expression(
-                        f"Above",
-                        symbol_table,
-                        "tensors",
-                        f"arch.{node.name}.tensor_order_options",
-                    ),
-                    eval_set_expression(
-                        f"~Above",
-                        symbol_table,
-                        "tensors",
-                        f"arch.{node.name}.tensor_order_options",
-                    ),
-                ]
+                [seen_tensors, node_tensors.keep - seen_tensors]
             )
 
-        for order_constraint in node_tensors.tensor_order_options:
+        for order_constraint in tensor_order_options:
             order = Order()
             for together_tensors in order_constraint:
                 in_mapping_together_tensors = [
@@ -147,6 +134,7 @@ def get_tensor_order_constraint(
                     order.add_together_tensors(in_mapping_together_tensors)
             if order.order:
                 required_order.setdefault(node.name, []).append(order)
+        seen_tensors.update(node_tensors.keep)
     return required_order
 
 

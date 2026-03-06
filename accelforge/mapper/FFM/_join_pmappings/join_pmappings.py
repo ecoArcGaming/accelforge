@@ -787,7 +787,6 @@ def join_pmappings(
         # ======================================================================
         import copy
 
-        prev_combined = copy.deepcopy(combined)
         if DELAY:
             mappings = parallel(
                 [c.mappings for c in combined],

@@ -446,6 +446,7 @@ def quick_insert_reservation_nodes(job: Job) -> Mapping:
     insert_reservation_nodes(mapping, info, job.fusable_tensors)
     m = Mapping(nodes=mapping)
     m._n_loop_orders = job.mapping._n_loop_orders
+    m._template_index = job.mapping._template_index
     return m
 
 

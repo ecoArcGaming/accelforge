@@ -187,10 +187,13 @@ def get_jobs(
         spec.mapper.time_limit * n_procs / max(total_jobs, 1),
         spec.mapper.time_limit_per_pmapping_template,
     )
+    total_templates = 0
     for einsum_name, compatibility_jobs in einsum2jobs.items():
-        total_jobs = sum(len(j) for j in compatibility_jobs.values())
+        n_compatibility_jobs = sum(len(j) for j in compatibility_jobs.values())
+        total_templates += n_compatibility_jobs
         if print_progress:
-            print(f"Einsum {einsum_name} has {total_jobs} pmapping templates:")
+            s = "jobs" if n_compatibility_jobs > 1 else "job"
+            print(f"Einsum {einsum_name} has {n_compatibility_jobs} pmapping {s}:")
         i = 0
         for job_list in compatibility_jobs.values():
             for job in job_list:
@@ -199,6 +202,10 @@ def get_jobs(
                     i += 1
                 job.memory_limit = memory_limit
                 job.time_limit = time_limit
+
+    if print_progress:
+        s = "templates" if total_templates > 1 else "template"
+        print(f"Total number of pmapping {s}: {total_templates}")
 
     return einsum2jobs
 

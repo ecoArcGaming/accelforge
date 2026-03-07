@@ -7,6 +7,7 @@ import accelforge.frontend.arch as arch
 from accelforge.frontend.mapping import Storage, TensorHolder, Toll
 from accelforge.frontend.workload import TensorName, SymbolTable
 
+from accelforge.util._basetypes import EvalableList
 from accelforge.util.exceptions import EvaluationError
 from accelforge.util._setexpressions import InvertibleSet
 
@@ -18,6 +19,7 @@ def make_tensor_choices_one_level(
     seen_tensors: set[TensorName] = (),
     is_copy_op: bool = False,
     einsum_name: str = None,
+    prioritize_reuse_of_unfused_tensors: bool = False,
 ) -> Generator[tuple[list[TensorHolder], SymbolTable, set[TensorName]], None, None]:
     """
     Generate combinations of TensorHolder nodes based on keep and bypass
@@ -45,6 +47,11 @@ def make_tensor_choices_one_level(
     new_symbol_table = copy.copy(symbol_table)
 
     node = copy.copy(node)
+    if not node.tensors.tensor_order_options and prioritize_reuse_of_unfused_tensors:
+        node.tensors = copy.copy(node.tensors)
+        node.tensors.tensor_order_options.append(
+            EvalableList(["Above", "~Above"])
+        )
     try:
         node.tensors: arch.Tensors = node.tensors._eval_expressions(
             symbol_table=symbol_table,
@@ -116,9 +123,10 @@ def make_storage_choices_all_levels(
     nodes: list[TensorHolder],
     symbol_table: dict[str, InvertibleSet],
     persistent_tensors: set[TensorName],
-    seen_tensors: set[TensorName] = None,
-    is_copy_op: bool = False,
-    einsum_name: str = None,
+    seen_tensors: set[TensorName],
+    is_copy_op: bool,
+    einsum_name: str,
+    prioritize_reuse_of_unfused_tensors: bool,
 ) -> Generator[tuple[dict[str, list[TensorHolder]], SymbolTable], None, None]:
     """
     Generate combinations of TensorHolder nodes based on keep and bypass
@@ -142,6 +150,7 @@ def make_storage_choices_all_levels(
         seen_tensors=seen_tensors,
         is_copy_op=is_copy_op,
         einsum_name=einsum_name,
+        prioritize_reuse_of_unfused_tensors=prioritize_reuse_of_unfused_tensors,
     ):
         for subchoices, symbol_table in make_storage_choices_all_levels(
             nodes=nodes[1:],
@@ -150,6 +159,7 @@ def make_storage_choices_all_levels(
             seen_tensors=new_seen_tensors,
             is_copy_op=is_copy_op,
             einsum_name=einsum_name,
+            prioritize_reuse_of_unfused_tensors=prioritize_reuse_of_unfused_tensors,
         ):
             yield {**subchoices, nodes[0].name: choice}, symbol_table
 

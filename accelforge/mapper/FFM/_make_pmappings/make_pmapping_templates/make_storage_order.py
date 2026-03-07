@@ -55,6 +55,7 @@ def get_tensor_choices(
         persistent_tensors=persistent_tensors,
         seen_tensors=set(),
         einsum_name=einsum_name,
+        prioritize_reuse_of_unfused_tensors=prioritize_reuse_of_unfused_tensors,
     ):
         x = [y for z in choice.values() for y in z]
         logging.info(
@@ -64,14 +65,19 @@ def get_tensor_choices(
 
         # Start out the mapping with the outermost memory name
         base_mapping = []
-        # for node in list(all_tensor_holders[::-1]):
-        #     if node.component == first_tensor_holder.name:
-        #         all_tensor_holders.remove(node)
-        #         base_mapping.append(node)
+
+        # make_storage_chocies_all_levels will parse the "tensors" field for each node,
+        # and we'll want those parsed values for later steps. This code grabs it from
+        # the nodes in the mapping. We only check the first storage node for each memory
+        # level since they're all the same.
+        parsed_nodes_in_mapping = []
+        for k, v in choice.items():
+            for s in v[:1]:
+                parsed_nodes_in_mapping.append(s.component_object)
 
         # Get the dataflow constraints for the mapping
         required_order = get_tensor_order_constraint(
-            nodes, symbol_table, tensors, prioritize_reuse_of_unfused_tensors
+            parsed_nodes_in_mapping, symbol_table, tensors
         )
 
         symbol_table["arch_attributes"] = {}
@@ -101,9 +107,7 @@ def get_tensor_choices(
             yield mapping, symbol_table, cur_compute
 
 
-def get_tensor_order_constraint(
-    nodes, symbol_table, tensors, prioritize_reuse_of_unfused_tensors: bool
-):
+def get_tensor_order_constraint(nodes, symbol_table, tensors):
     required_order: dict[str, list[Order]] = {}
     seen_tensors = set()
     for node in nodes:
@@ -116,11 +120,6 @@ def get_tensor_order_constraint(
             location=f"arch.{node.name}.tensors",
         )[0]
         tensor_order_options = list(node_tensors.tensor_order_options)
-        if prioritize_reuse_of_unfused_tensors and not tensor_order_options:
-            tensor_order_options.append(
-                [seen_tensors, node_tensors.keep - seen_tensors]
-            )
-
         for order_constraint in tensor_order_options:
             order = Order()
             for together_tensors in order_constraint:

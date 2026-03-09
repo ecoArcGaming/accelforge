@@ -14,6 +14,8 @@ import os
 from tqdm import tqdm
 import numpy as np
 
+from accelforge.util._mathfuncs import NUMPY_FLOAT_TYPE
+
 __all__ = [
     "set_n_parallel_jobs",
     "get_n_parallel_jobs",
@@ -24,8 +26,6 @@ __all__ = [
 
 PARALLELIZE = True
 N_PARALLEL_PROCESSES = os.cpu_count()
-
-NUMPY_FLOAT_TYPE = np.float32
 
 
 def _lambdify_type_check(*args, **kwargs):

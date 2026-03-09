@@ -133,15 +133,14 @@ class FFM(EvalableModel):
         ]
     ] = ()
 
-    _objective_precision: float = 0
+    objective_tolerance: float = 0
     """
-    Rounds objective values to the nearest value representable by (1 + precision) ^ N.
-    Must be between 0 and 1. If zero, then no rounding is performed.
+    Objectives may be suboptimal within (1 +/- tolerance).
     """
 
-    _resource_usage_precision: float = 0
+    resource_usage_tolerance: float = 0
     """
-    Pmappings with resource usage > (1 - precision) may be dropped. Must be between 0
+    Pmappings with resource usage > (1 - tolerance) may be dropped. Must be between 0
     and 1. If zero, then no dropping is performed. If Metrics.RESOURCE_USAGE is set,
     then this is ignored.
     """

@@ -294,12 +294,14 @@ class Goal:
         goal: str = None,
         max_value: Optional[float] = None,
         only_care_if_valid: bool = False,
-        precision: float = 0,
+        tolerance: float = 0,
+        absolute_tolerance: float = 0,
     ):
         self.goal = goal
         self.max_value = max_value
         self.only_care_if_valid = only_care_if_valid
-        self.precision: float = precision
+        self.tolerance: float = tolerance
+        self.absolute_tolerance: float | None = absolute_tolerance
 
     def __or__(self, other: "Goal"):
         if self.goal is None:
@@ -310,36 +312,29 @@ class Goal:
         assert self.only_care_if_valid == other.only_care_if_valid
         mv = self.max_value
         care = self.only_care_if_valid or other.only_care_if_valid
+        tolerance = min(self.tolerance, other.tolerance)
+        absolute_tolerance = min(self.absolute_tolerance, other.absolute_tolerance)
+        kwargs = dict(
+            max_value=mv,
+            only_care_if_valid=care,
+            tolerance=tolerance,
+            absolute_tolerance=absolute_tolerance,
+        )
 
         # If the goals are the same, space doesn't change
         if self.goal == other.goal:
-            return Goal(
-                self.goal,
-                max_value=mv,
-                only_care_if_valid=care,
-                precision=min(self.precision, other.precision),
-            )
+            return Goal(self.goal, **kwargs)
 
         # min_per_prime_factor is a superset of min, so we can just keep the min_per_prime_factor goal
         if {self.goal, other.goal} == {"min", "min_per_prime_factor"}:
-            return Goal(
-                "min_per_prime_factor",
-                max_value=mv,
-                only_care_if_valid=care,
-                precision=min(self.precision, other.precision),
-            )
+            return Goal("min_per_prime_factor", **kwargs)
 
         # max_per_prime_factor is a superset of max, so we can just keep the max_per_prime_factor goal
         if {self.goal, other.goal} == {"max", "max_per_prime_factor"}:
-            return Goal(
-                "max_per_prime_factor",
-                max_value=mv,
-                only_care_if_valid=care,
-                precision=min(self.precision, other.precision),
-            )
+            return Goal("max_per_prime_factor", **kwargs)
 
         # Otherwise, there's a disagreement and the only space we're both in can be diff
-        return Goal("diff", max_value=mv, only_care_if_valid=care)
+        return Goal("diff", **kwargs)
 
     def __str__(self):
         return f"{self.goal} {self.max_value} {self.only_care_if_valid}"
@@ -349,9 +344,21 @@ class Goal:
 
     def __invert__(self):
         if self.goal == "min":
-            return Goal("max", self.max_value, self.only_care_if_valid, self.precision)
+            return Goal(
+                "max",
+                self.max_value,
+                self.only_care_if_valid,
+                self.tolerance,
+                self.absolute_tolerance,
+            )
         elif self.goal == "max":
-            return Goal("min", self.max_value, self.only_care_if_valid, self.precision)
+            return Goal(
+                "min",
+                self.max_value,
+                self.only_care_if_valid,
+                self.tolerance,
+                self.absolute_tolerance,
+            )
         elif self.goal == "min_per_prime_factor":
             raise ValueError("Can't invert min_per_prime_factor")
         elif self.goal == "max_per_prime_factor":
@@ -365,7 +372,7 @@ class Goal:
             and self.goal == other.goal
             and self.max_value == other.max_value
             and self.only_care_if_valid == other.only_care_if_valid
-            and self.precision == other.precision
+            and self.tolerance == other.tolerance
         )
 
 
@@ -381,7 +388,8 @@ class Objective:
         inclusive: bool = True,
         try_best_if_none_reaches_min: bool = False,
         terms_do_not_cross_zero: bool = False,
-        precision: float = 0,
+        tolerance: float = 0,
+        absolute_tolerance: float = 0,
     ):
         if isinstance(formula, Number):
             formula = sympy.Number(formula)
@@ -396,7 +404,8 @@ class Objective:
         self.inclusive: bool = inclusive
         self.try_best_if_none_reaches_min: bool = try_best_if_none_reaches_min
         self.terms_do_not_cross_zero: bool = terms_do_not_cross_zero
-        self.precision: float = precision
+        self.tolerance: float = tolerance
+        self.absolute_tolerance: float = absolute_tolerance
 
 
 def is_constant(f: Expr) -> bool:
@@ -448,13 +457,17 @@ def _partition_formula(
     f: Expr,
     symbols_enumerated: set[Symbol],
     bounds: tuple[tuple[Symbol, int, int], ...],
-    precision: float,
+    tolerance: float,
+    absolute_tolerance: float | None = None,
     terms_do_not_cross_zero: bool = False,
 ) -> dict[Symbol, Goal]:
     goals: dict[Symbol, Goal] = {}
 
     def update_goal(symbol: Symbol, goal: Goal, **kwargs):
-        goals[symbol] = goal | goals.get(symbol, Goal())
+        if symbol in goals:
+            goals[symbol] |= goal
+        else:
+            goals[symbol] = goal
 
     negate = False
 
@@ -462,7 +475,13 @@ def _partition_formula(
         return goals
 
     if f.free_symbols.issubset(symbols_enumerated):
-        return {f: Goal("min")}
+        return {
+            f: Goal("min", tolerance=tolerance, absolute_tolerance=absolute_tolerance)
+        }
+
+    # Formula isn't done -> don't do any rounding so errors don't stack
+    tolerance = 0
+    absolute_tolerance = 0
 
     def _try_replace_unknowns(t: Expr):
         for s in t.free_symbols - symbols_enumerated:
@@ -530,7 +549,6 @@ def _partition_formula(
         # CAN break this up because if we can guarantee that for any settings of all the
         # unknown terms, then if one known term is lower, the sum is lower.
         terms = _recombine_terms(f.args)
-        precision /= len(terms)
         # If the formula is a product:
         # - Divide the max value by the constant factors
         # - For non-constant factors, if they're >1 then we can keep the max.
@@ -556,7 +574,8 @@ def _partition_formula(
     for term in terms:
         term, goal = try_replace_single_term(term, fzs(symbols_enumerated), bounds)
         if goal is not None:
-            goal.precision = precision
+            goal.tolerance = tolerance
+            goal.absolute_tolerance = absolute_tolerance
             update_goal(term, goal)
             continue
 
@@ -565,7 +584,10 @@ def _partition_formula(
             continue
 
         if term.free_symbols.issubset(symbols_enumerated):
-            update_goal(term, Goal("min", precision=precision))
+            update_goal(
+                term,
+                Goal("min", tolerance=tolerance, absolute_tolerance=absolute_tolerance),
+            )
             continue
 
         # Don't recurse with the same formula. If we got here without simplifying it,
@@ -575,9 +597,12 @@ def _partition_formula(
                 update_goal(symbol, Goal("diff"))
         else:
             for subterm, subgoal in partition_formula(
-                term, symbols_enumerated, bounds, precision
+                term, symbols_enumerated, bounds, tolerance, absolute_tolerance
             ).items():
-                goals[subterm] = subgoal | goals.get(subterm, Goal())
+                if subterm in goals:
+                    goals[subterm] |= subgoal
+                else:
+                    goals[subterm] = subgoal
 
     for k, v in goals.items():
         if negate:
@@ -597,14 +622,16 @@ def partition_formula(
     f: Expr,
     symbols_enumerated: set[Symbol],
     bounds: tuple[tuple[Symbol, int, int], ...],
-    precision: float,
+    tolerance: float,
+    absolute_tolerance: float | None = None,
     terms_do_not_cross_zero: bool = False,
 ) -> dict[Symbol, Goal]:
     return _partition_formula(
         f,
         fzs(symbols_enumerated & f.free_symbols),
         bounds,
-        precision,
+        tolerance,
+        absolute_tolerance,
         terms_do_not_cross_zero,
     )
 
@@ -766,7 +793,7 @@ def coalesce_symbols(
 
     log_message("coalesce symbols", f"initial")
     for s, g in symbol2goal.items():
-        log_message(f"\t{g.goal} {g.precision}: {s}")
+        log_message(f"\t{g.goal} {g.tolerance=} {g.absolute_tolerance=}: {s}")
 
     changed = True
     while changed:
@@ -845,7 +872,8 @@ def coalesce_symbols(
                     formula, sym_enumerated_set, bounds
                 )
                 if new_goal is not None:
-                    new_goal.precision = 0
+                    new_goal.tolerance = 0
+                    new_goal.absolute_tolerance = 0
                     log_message("coalesce symbols", f"replacing single term: {formula}")
                     update_symbol2goal(formula, new_goal, new_symbol2goal)
 
@@ -862,7 +890,8 @@ def coalesce_symbols(
                     log_message("coalesce symbols", f"replacing reciprocal: {formula}")
                     formula = 1 / formula
                     goal = ~goal
-                    goal.precision = 0
+                    goal.tolerance = 0
+                    goal.absolute_tolerance = 0
 
             # If a formula agrees entirely with other goals, then we can remove it
             disagrees = []
@@ -921,7 +950,7 @@ def coalesce_symbols(
 
     log_message("coalesce symbols", f"final")
     for s, g in symbol2goal.items():
-        log_message(f"\t{g.goal} {g.precision}: {s}")
+        log_message(f"\t{g.goal} {g.tolerance=} {g.absolute_tolerance=}: {s}")
 
     return symbol2goal
 
@@ -1359,7 +1388,10 @@ def get_tile_shape_choices(
             ):
                 if s2g is None:
                     s2g = symbol2goal
-                s2g[symbol] = goal | s2g.get(symbol, Goal())
+                if symbol in s2g:
+                    s2g[symbol] |= goal
+                else:
+                    s2g[symbol] = goal
 
             # If we're a symbol and we will later make a loop outside of this one, then
             # we need to track this loop because the outer choices depend on this one.
@@ -1581,23 +1613,26 @@ def get_tile_shape_choices(
                 prev_size = choices_enumerated.shape[0]
 
                 log_message(
-                    "Partitioning formula", f"{objective.name}: {objective.formula}"
+                    "Partitioning formula",
+                    f"{objective.name} {objective.tolerance=} {objective.absolute_tolerance=}: {objective.formula}",
                 )
 
                 goals = partition_formula(
                     objective.formula,
                     sym_enumerated_set,
                     what_tiles_symbol.bounds,
-                    objective.precision,
+                    objective.tolerance,
+                    objective.absolute_tolerance,
                     objective.terms_do_not_cross_zero,
                 )
 
                 log_message(f"formula", f"{objective.formula}")
                 for k, v in goals.items():
-                    log_message("formula", f"\t -> {k}: {v}")
-
-                if len(goals) == 1 and next(iter(goals.keys())) == objective.formula:
-                    next(iter(goals.values())).precision = objective.precision
+                    tolerance = v.tolerance
+                    absolute_tolerance = v.absolute_tolerance
+                    log_message(
+                        "formula", f"\t -> {tolerance=} {absolute_tolerance=} {v}: {k}"
+                    )
 
                 for symbol, goal in goals.items():
                     update_symbol2goal(symbol, goal)
@@ -1652,21 +1687,29 @@ def get_tile_shape_choices(
                     log_message(f"\t{obj.name}: {obj.formula}")
                 log_message("Formulas:")
                 for formula, goal in symbol2goal.items():
-                    log_message(f"\t{goal.goal} {goal.precision=}: {formula}")
+                    log_message(
+                        f"\t{goal.goal} {goal.tolerance=} {goal.absolute_tolerance=}: {formula}"
+                    )
 
                 drop_cols = []
                 pareto_goals = []
-                precisions = []
+                tolerances = []
+                absolute_tolerances = []
                 for i, (formula, goal) in enumerate(objective_values.items()):
                     goal = symbol2goal[formula]
                     if i not in drop_cols:
                         pareto_goals.append(goal.goal)
-                        precisions.append(goal.precision)
+                        tolerances.append(goal.tolerance)
+                        absolute_tolerances.append(goal.absolute_tolerance)
                 to_pareto = to_pareto[
                     :, [i for i in range(to_pareto.shape[1]) if i not in drop_cols]
                 ]
                 keep = makepareto_numpy(
-                    to_pareto, pareto_goals, dirty=True, precisions=precisions
+                    to_pareto,
+                    pareto_goals,
+                    dirty=True,
+                    tolerances=tolerances,
+                    absolute_tolerances=absolute_tolerances,
                 )
                 prev_size = choices_enumerated.shape[0]
                 choices_enumerated = choices_enumerated[keep]
@@ -1976,9 +2019,23 @@ def _make_tile_shapes(job: "Job"):
         if k in usage_df:
             only_care_if_valid = True
 
-        precision = job.resource_usage_precision + job.lossy_resource_usage_precision
+        tolerance = job.resource_usage_tolerance
         if job.metrics & Metrics.RESOURCE_USAGE:
-            precision = job.resource_usage_precision
+            tolerance = job.objective_tolerance
+
+        # Absolute error can sum across Einsums, so we need to divide by it here.
+        # Relative error doesn't (x * (1 += 0.1) + y * (1 += 0.1) = (x + y) * (1 +- <=
+        # 1.1)), so no divide needed. NOTE: Pruning using tolerance happens in exactly
+        # two result-affecting places (a third is when there's dirty initial joining,
+        # but that doesn't affect final results). Here, iff a formula is fully
+        # evaluated, and in an outer call when packing these tile shapes into
+        # PmappingDataFrame objects. There's no transformation of the values between
+        # these steps, so error doesn't stack (it's just doing the same pruning, perhaps
+        # with a different number of objectives).
+
+        absolute_tolerance = tolerance
+        if split[-1] not in job.memories_track_pmappings_only:
+            absolute_tolerance /= job.workload_n_einsums
 
         objectives.append(
             Objective(
@@ -1988,7 +2045,8 @@ def _make_tile_shapes(job: "Job"):
                 only_care_if_valid=only_care_if_valid,
                 max_value=1,
                 terms_do_not_cross_zero=True,
-                precision=precision,
+                tolerance=tolerance,
+                absolute_tolerance=absolute_tolerance,
             )
         )
 
@@ -2024,6 +2082,13 @@ def _make_tile_shapes(job: "Job"):
     # conclude it has lower action counts for all actions, it must have lower energy and
     # latency, so also grab it.
     n_total_objectives = 0
+
+    # NOTE: Pruning using tolerance happens in exactly two places that affect results (a
+    # third is when there's dirty initial joining, but that doesn't affect final
+    # results). Here, iff a formula is fully evaluated, and in an outer call when
+    # packing these tile shapes into PmappingDataFrame objects. There's no
+    # transformation of the values between these steps, so error doesn't stack (it's
+    # just doing the same pruning, perhaps with a different number of objectives).
     for k, v in symbolic_df.items():
         if "Total" not in k:
             continue
@@ -2034,7 +2099,7 @@ def _make_tile_shapes(job: "Job"):
                 formula=v,
                 symbols=symbols,
                 terms_do_not_cross_zero="energy" in k or "latency" in k,
-                precision=job.objective_precision,
+                tolerance=job.objective_tolerance,
             )
         )
         n_total_objectives += 1
@@ -2046,7 +2111,7 @@ def _make_tile_shapes(job: "Job"):
                 formula=v,
                 symbols=symbols,
                 terms_do_not_cross_zero=True,
-                precision=job.objective_precision,
+                tolerance=job.objective_tolerance,
             )
         )
 

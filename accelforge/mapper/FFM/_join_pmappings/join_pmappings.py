@@ -33,7 +33,7 @@ from accelforge.mapper.FFM._join_pmappings.pmapping_group import (
     Compatibility,
 )
 from accelforge.mapper.FFM._pareto_df.df_convention import col2nameloop
-from accelforge.util import fillna_and_numeric_cast, parallel, delayed
+from accelforge.util import _fillna_and__numeric_cast, parallel, delayed
 
 
 logger = logging.getLogger(__name__)
@@ -79,10 +79,11 @@ class OptimalityThresholder:
         self._pmapping_row_filter_function = _pmapping_row_filter_function
 
         self.compare_to: list[dict[str, float]] = []
+        if print_progress:
+            print(f"Filtering out pmappings worse than the following:")
         for i in chosen_indices.astype(int):
             self.compare_to.append({c: compare_to.iloc[i][c] for c in compare_cols})
             if print_progress:
-                print(f"Filtering out pmappings worse than the following:")
                 print(
                     "\t"
                     + "    ".join(
@@ -107,6 +108,38 @@ class OptimalityThresholder:
         return nondominated_by_all
 
 
+def prune_with_tolerance(
+    pmappings: dict[EinsumName, list[PmappingGroup]],
+    objective_tolerance: float,
+    resource_usage_tolerance: float,
+    print_progress: bool = True,
+):
+    if objective_tolerance == 0 and resource_usage_tolerance == 0:
+        return pmappings
+
+    prev_n = sum(len(pg.mappings) for p in pmappings.values() for pg in p)
+    def prune(einsum_name, pg):
+        pg.mappings.make_pareto(
+            objective_tolerance=objective_tolerance,
+            resource_usage_tolerance=resource_usage_tolerance,
+        )
+        return einsum_name, pg
+
+    jobs = [delayed(prune)(e, pg) for e, p in pmappings.items() for pg in p]
+
+    result = {einsum_name: [] for einsum_name in pmappings.keys()}
+    for einsum_name, pg in parallel(
+        jobs, pbar="Dirty pruning pmappings" if print_progress else None
+    ):
+        result[einsum_name].append(pg)
+
+    new_n = sum(len(pg.mappings) for p in result.values() for pg in p)
+    if print_progress:
+        print(f"Dirty joining uses {new_n / prev_n * 100:.2f}% of the pmappings")
+
+    return result
+
+
 def join_strategy_2(
     spec: Spec,
     compressed: dict[EinsumName, list[PmappingGroup]],
@@ -114,10 +147,11 @@ def join_strategy_2(
     metrics: Metrics,
     for_model: bool,
     _pmapping_row_filter_function: Callable[[pd.DataFrame], np.ndarray] | None = None,
+    resource_usage_tolerance: float = 0,
 ):
     thresholds = [1, 0]
-    thresholds = [t for t in thresholds if t > spec.mapper._objective_precision]
-    thresholds.append(spec.mapper._objective_precision)
+    thresholds = [t for t in thresholds if t > spec.mapper.objective_tolerance]
+    thresholds.append(spec.mapper.objective_tolerance)
 
     filter_func = _pmapping_row_filter_function
     for i, threshold in enumerate(thresholds):
@@ -127,25 +161,26 @@ def join_strategy_2(
             else:
                 print("Final clean join.")
         try:
-            for p in compressed.values():
-                for pg in p:
-                    pg.mappings.objective_precision = threshold
-                    # pg.mappings.resource_usage_precision = threshold
-
+            compressed = deepcopy(compressed)
+            compressed = prune_with_tolerance(
+                compressed,
+                objective_tolerance=threshold,
+                resource_usage_tolerance=resource_usage_tolerance,
+                print_progress=print_progress,
+            )
             joined = join_pmappings(
-                deepcopy(compressed),
+                compressed,
                 spec,
                 _pmapping_row_filter_function=filter_func,
                 print_progress=print_progress,
                 metrics=metrics,
             )
-            assert joined.objective_precision == threshold, "Lost objective precision?!"
             if i < len(thresholds) - 1:
                 filter_func = OptimalityThresholder(
                     joined, _pmapping_row_filter_function, print_progress
                 )
         except Exception as e:
-            if threshold == 0:
+            if i == len(thresholds) - 1:
                 raise
             if print_progress:
                 print(f"Error with optimality threshold {threshold}: {e}")
@@ -189,7 +224,7 @@ def multi_strategy_join(
     for i, threshold in enumerate(resource_usage_thresholds):
         for p in compressed.values():
             for pg in p:
-                pg.mappings.resource_usage_precision = threshold
+                pg.mappings.excess_resource_tolerance = threshold
         if i < len(resource_usage_thresholds) - 1 and print_progress:
             print(f"Dirty joining with resource usage <= {1 + threshold}× optimal")
         joined = join_strategy_2(
@@ -199,8 +234,8 @@ def multi_strategy_join(
             metrics,
             for_model,
             _pmapping_row_filter_function,
+            resource_usage_tolerance=threshold,
         )
-        assert joined.resource_usage_precision == threshold, "Lost resource precision?!"
         for c in joined.data.columns:
             if is_reservation_col(c):
                 maxvalue = joined.data[c].max()
@@ -211,7 +246,7 @@ def multi_strategy_join(
                     break
         else:
             if print_progress:
-                print("Dirty joining returned a valid & optimal mapping! Returning...")
+                print("Dirty joining mapping(s) valid & optimal! Returning...")
             return joined
     return joined
 
@@ -253,7 +288,7 @@ def clean_compress_and_join_pmappings(
         joined.data[col] = joined.data[col].apply(
             lambda x: pmappings.pmapping_objects[einsum_name][x]
         )
-    joined._data = fillna_and_numeric_cast(joined.data, 0).reset_index(drop=True)
+    joined._data = _fillna_and__numeric_cast(joined.data, 0).reset_index(drop=True)
 
     rank_variable_bounds = get_rank_variable_bounds_for_all_einsums(pmappings.spec)
     einsum_names = list(einsum2pmappings.keys())

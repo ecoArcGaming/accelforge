@@ -6,6 +6,7 @@ import numbers
 import pandas as pd
 import numpy as np
 
+NUMPY_FLOAT_TYPE = np.float32
 
 @functools.lru_cache(maxsize=None)
 def _count_factorizations_imperfect(n, into_n_parts):
@@ -61,11 +62,9 @@ def _count_factorizations(n, into_n_parts, imperfect=False):
     return total
 
 
-def fillna_and_numeric_cast(df: pd.DataFrame, value: float) -> pd.DataFrame:
+def _fillna_and__numeric_cast(df: pd.DataFrame, value: float) -> pd.DataFrame:
     def _is_float(x) -> bool:
-        return isinstance(x, numbers.Real) or (
-            isinstance(x, numbers.Real) and math.isnan(x)
-        )
+        return isinstance(x, numbers.Real)
 
     def _is_int(x) -> bool:
         return (
@@ -90,4 +89,22 @@ def fillna_and_numeric_cast(df: pd.DataFrame, value: float) -> pd.DataFrame:
         ), f"df has nans in column {col} with dtype {df[col].dtype}. " + "\n".join(
             f"{x} {type(x)=} {_is_int(x)=} {_is_float(x)=} " for x in df[col]
         )
+    return df
+
+
+def _numeric_cast(df: pd.DataFrame) -> pd.DataFrame:
+    def _is_float(x) -> bool:
+        return isinstance(x, numbers.Real)
+
+    def _is_int(x) -> bool:
+        return
+
+    for col in df.columns:
+        # If it's an object col and all of them are integers, convert to int. nans count
+        # as True
+        if df[col].dtype == object and all(_is_int(x) for x in df[col]):
+            df[col] = df[col].astype(int)
+        if df[col].dtype == object and all(_is_float(x) for x in df[col]):
+            df[col] = df[col].astype(NUMPY_FLOAT_TYPE)
+
     return df

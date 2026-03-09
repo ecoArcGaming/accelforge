@@ -38,10 +38,11 @@ from accelforge.frontend.mapping import Reservation as ReservationNode
 class Job:
     spec_one_einsum: Spec | None
     metrics: Metrics
-    resource_usage_precision: float
-    objective_precision: float
-    lossy_resource_usage_precision: float
+    objective_tolerance: float
     rank_variable_bounds: dict[RankVariable, int]
+    workload_n_einsums: int
+    resource_usage_tolerance: float
+    objective_tolerance: float
 
     job_id: UUID = field(default_factory=uuid4)
 

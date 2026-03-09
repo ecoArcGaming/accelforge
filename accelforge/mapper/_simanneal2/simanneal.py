@@ -249,9 +249,6 @@ class SimAnnealMapping:
                 n_valid_pmappings=s.mappings.n_valid_pmappings,
                 ignored_resources=s.mappings.ignored_resources,
                 drop_valid_reservations=s.mappings.drop_valid_reservations,
-                resource_usage_precision=s.mappings.resource_usage_precision,
-                objective_precision=s.mappings.objective_precision,
-                lossy_resource_usage_precision=s.mappings.lossy_resource_usage_precision,
             ),
         )
 
@@ -624,5 +621,5 @@ def join_pmappings(
     # # Fill nans with 0. We might get missing columns for some mapping entries if there
     # # are energy entries for some pmappings but not others (e.g., one pmapping accesses
     # # DRAM while another doesn't.)
-    # joined._data = joined.data.fillna_and_numeric_cast(0)
+    # joined._data = joined.data._fillna_and__numeric_cast(0)
     return t0  # Mappings(spec, list(pmappings.einsum2pmappings.keys()), joined.data)

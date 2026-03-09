@@ -78,9 +78,9 @@ def evaluate_mapping(
         metrics=spec.model.metrics,
         rank_variable_bounds=get_rank_variable_bounds_for_all_einsums(spec),
         spec_one_einsum=spec,
-        resource_usage_precision=0,  # spec.model._resource_usage_precision,
-        objective_precision=0,  # spec.model._objective_precision,
-        lossy_resource_usage_precision=0,  # spec.model._resource_usage_precision,
+        resource_usage_tolerance=0,  # spec.model.resource_usage_tolerance,
+        objective_tolerance=0,  # spec.model.objective_tolerance,
+        workload_n_einsums=len(spec.workload.einsum_names),
     )
 
     einsum2pmappings = {}
@@ -189,9 +189,6 @@ def evaluate_mapping(
                     n_total_pmappings=1,
                     n_valid_pmappings=1,
                     ignored_resources=set(),
-                    resource_usage_precision=job.resource_usage_precision,
-                    objective_precision=job.objective_precision,
-                    lossy_resource_usage_precision=job.lossy_resource_usage_precision,
                     drop_valid_reservations=False,
                 ),
             )

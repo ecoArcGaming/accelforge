@@ -13,7 +13,7 @@ from accelforge.mapper.FFM._join_pmappings.pmapping_group import (
 )
 from accelforge.mapper.simanneal.simanneal import MapspaceGlobals, _fuse_sims
 from accelforge.mapper.simanneal.tracking import EvaluationsScoreTracker
-from accelforge.util import fillna_and_numeric_cast
+from accelforge.util import _fillna_and__numeric_cast
 from accelforge.util._frozenset import fzs
 from accelforge.util.parallel import parallel, get_n_parallel_jobs
 
@@ -27,7 +27,7 @@ def mapping2sims(einsum_to_result: Compatibility):
 
 def paretofy(k, v):
     return PmappingGroup(
-        k, PmappingDataframe(fillna_and_numeric_cast(pd.DataFrame(v), 0))
+        k, PmappingDataframe(_fillna_and__numeric_cast(pd.DataFrame(v), 0))
     )
 
 

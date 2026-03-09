@@ -177,33 +177,51 @@ def pareto_front_cupy_blockwise_sorted_recursive(X, block_size=2000):
 #         return mappings[mask]
 
 
-def round_to_precision(x: pd.Series, precision: float) -> pd.Series:
-    if precision == 0:
+def round_to_tolerance(x: pd.Series, tolerance: float) -> pd.Series:
+    if tolerance == 0:
         return x
-    # maxval = x.max()
-    # minval = x.min()
-    # x = (x - minval) / (maxval - minval)
-    x = np.round(x / precision) * precision
-    return x  # * (maxval - minval) + minval
+    x = np.round(x / tolerance) * tolerance
+    return x
 
 
-def logscale_to_precision(x: pd.Series, precision: float) -> pd.Series:
-    if precision == 0 or precision is None:
+def logscale_to_tolerance(x: pd.Series, tolerance: float) -> pd.Series:
+    if tolerance == 0 or tolerance is None:
         return x
-    assert precision > 0
+    assert tolerance > 0
     if x.min() <= 0:
         return x
-    return np.round(np.log(x) / np.log(1 + precision))
+    rounded = np.round(np.log(x) / np.log(1 + tolerance))
+    return np.exp(rounded * np.log(1 + tolerance))
+
+
+def multi_round(
+    x: np.ndarray, tolerance: float, absolute_tolerance: float
+) -> np.ndarray:
+    tolerance = 0 if tolerance is None else tolerance
+    absolute_tolerance = 0 if absolute_tolerance is None else absolute_tolerance
+    if tolerance == 0:
+        return round_to_tolerance(x, absolute_tolerance)
+    if absolute_tolerance == 0:
+        return logscale_to_tolerance(x, tolerance)
+
+    abs_step_size = absolute_tolerance
+    log_step_size = tolerance * x
+
+    rounded = round_to_tolerance(x, abs_step_size)
+    logscale_rounded = logscale_to_tolerance(x, tolerance)
+
+    use_log_mask = log_step_size > abs_step_size
+    new = np.where(use_log_mask, logscale_rounded, rounded)
+    return new
 
 
 def makepareto(
     mappings: pd.DataFrame,
     columns: list[str] = None,
-    parallelize: bool = False,
     split_by_cols: list[str] = (),
-    resource_usage_precision: float = 0,
-    objective_precision: float = 0,
-    use_objective_precision_for_resource_usage: bool = False,
+    resource_usage_tolerance: float = 0,
+    objective_tolerance: float = 0,
+    absolute_resource_usage_tolerance: float = 0,
 ) -> pd.DataFrame:
     # return makepareto_time_compare(mappings)
     if columns is None:
@@ -224,7 +242,7 @@ def makepareto(
             continue
 
         if c in columns and is_objective_col(c):
-            to_pareto.append(logscale_to_precision(mappings[c], objective_precision))
+            to_pareto.append(logscale_to_tolerance(mappings[c], objective_tolerance))
             goals.append("min")
         elif c in split_by_cols:
             to_pareto.append(mappings[c])
@@ -232,11 +250,9 @@ def makepareto(
         elif c in columns:
             x = mappings[c]
             if col2nameloop(c) is not None:
-                if use_objective_precision_for_resource_usage:
-                    if objective_precision != 0:
-                        x = logscale_to_precision(x, objective_precision)
-                elif resource_usage_precision != 0:
-                    x = logscale_to_precision(x, resource_usage_precision)
+                x = multi_round(
+                    x, resource_usage_tolerance, absolute_resource_usage_tolerance
+                )
             to_pareto.append(x)
             goals.append("min")
 
@@ -253,7 +269,9 @@ def makepareto(
     #     open(f"/tmp/paretos/{uuid.uuid4()}.pkl", "wb")
     # )
 
-    combined = pd.concat(to_pareto, axis=1)
+    combined = pd.concat(
+        (pd.Series(p).reset_index(drop=True) for p in to_pareto), axis=1
+    )
     return mappings[fast_pareto_mask(combined.values, goals)]
 
 
@@ -285,13 +303,16 @@ def makepareto_numpy(
     mappings: np.ndarray,
     goals: list[str],
     dirty: bool = False,  # Doesn't do anything
-    precisions: list[float] = None,
+    tolerances: list[float] = None,
+    absolute_tolerances: list[float] = None,
 ) -> pd.DataFrame:
 
     to_pareto = []
     new_goals = []
-    if precisions is None:
-        precisions = [0] * len(goals)
+    if tolerances is None:
+        tolerances = [0] * len(goals)
+    if absolute_tolerances is None:
+        absolute_tolerances = [0] * len(goals)
 
     assert len(goals) == mappings.shape[1]
     for c in range(mappings.shape[1]):
@@ -299,10 +320,7 @@ def makepareto_numpy(
             continue
 
         goal = goals[c]
-        if precisions[c] is not None:
-            rounded = logscale_to_precision(mappings[:, c], precisions[c])
-        else:
-            rounded = mappings[:, c]
+        rounded = multi_round(mappings[:, c], tolerances[c], absolute_tolerances[c])
 
         if goal in ["min", "max"]:
             to_pareto.append(rounded if goal == "min" else -rounded)

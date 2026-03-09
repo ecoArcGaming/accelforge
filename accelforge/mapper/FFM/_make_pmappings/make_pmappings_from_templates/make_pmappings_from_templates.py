@@ -295,9 +295,6 @@ def make_pmappings_from_templates(
                 # to another Einsum. drop_valid_reservations is turned on later at the
                 # joining stage because we have full information of live tensors then.
                 drop_valid_reservations=False,
-                resource_usage_precision=job.resource_usage_precision,
-                objective_precision=job.objective_precision,
-                lossy_resource_usage_precision=job.lossy_resource_usage_precision,
             )
             for r in results
         ],
@@ -320,14 +317,29 @@ def make_pmappings_from_templates(
 
     job0 = next(iter(jobs_with_similar_compatibilities))
 
+    resource_usage_tolerance = job0.resource_usage_tolerance
+    if not drop_valid_reservations:
+        resource_usage_tolerance = job0.objective_tolerance
+
+    # Absolute error can sum across Einsums, so we need to divide by it here. Relative
+    # error doesn't (x * (1 += 0.1) + y * (1 += 0.1) = (x + y) * (1 +- <= 1.1)), so no
+    # divide needed. NOTE: Pruning using tolerance happens in exactly two places that
+    # affect results (a third is when there's dirty initial joining, but that doesn't
+    # affect final results). Here and in the tile shape creation when a formula is fully
+    # evaluated. There's no transformation of the values between these steps, so error
+    # doesn't stack (it's just doing the same pruning, perhaps with a different number
+    # of objectives).
+    absolute_resource_usage_tolerance = (
+        resource_usage_tolerance / job0.workload_n_einsums
+    )
+
     # Pareto prune
     df = makepareto(
         df,
         split_by_cols=fused_loop_cols,
-        resource_usage_precision=job0.resource_usage_precision
-        + job0.lossy_resource_usage_precision,
-        objective_precision=job0.objective_precision,
-        use_objective_precision_for_resource_usage=not drop_valid_reservations,
+        resource_usage_tolerance=resource_usage_tolerance,
+        absolute_resource_usage_tolerance=absolute_resource_usage_tolerance,
+        objective_tolerance=job0.objective_tolerance,
     ).copy()
 
     jobs_passed_pareto = sorted(df[f"{einsum_name}<SEP>{MAPPING_COLUMN}"].unique())
@@ -400,9 +412,9 @@ def make_pmappings_from_templates(
             next_shared_loop_index=next_shared_loop_index_this_group,
             n_total_pmappings=total_pmappings_per_group,
             n_valid_pmappings=valid_pmappings_per_group,
-            skip_pareto=next_shared_loop_index_this_group == next_shared_loop_index,
             ignored_resources=job.ignored_resources
             | set(job.memories_track_pmappings_only),
+            skip_pareto=True,
             # False because we may have lifetimes that stretch through this Einsum due
             # to data dependencies, not loops. For example, if we have no fused loops,
             # we can't free our reservations because another Einsum may reserve a
@@ -410,10 +422,14 @@ def make_pmappings_from_templates(
             # Einsum. drop_valid_reservations is turned on later at the joining stage
             # because we have full information of live tensors then.
             drop_valid_reservations=False,
-            resource_usage_precision=job0.resource_usage_precision,
-            objective_precision=job0.objective_precision,
-            lossy_resource_usage_precision=job.lossy_resource_usage_precision,
         )
+        # If we have fewer fused loops, reservations likely got freed. We can free!
+        if next_shared_loop_index_this_group != next_shared_loop_index:
+            partial_mappings.make_pareto(
+                resource_usage_tolerance=resource_usage_tolerance,
+                objective_tolerance=job0.objective_tolerance,
+                absolute_resource_usage_tolerance=absolute_resource_usage_tolerance,
+            )
         pmapping_groups.append(PmappingGroup(compatibility, partial_mappings))
 
     return (

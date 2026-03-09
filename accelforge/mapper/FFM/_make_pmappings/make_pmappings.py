@@ -124,6 +124,7 @@ def get_jobs(
             dict[TensorName, dict[tuple[Rank, RankVariable], tuple[int, int]]],
         ],
         initial_delta_choices_for_einsum: dict[RankVariable, frozenset[int]],
+        n_einsums: int,
     ):
         jobs = {}
         workload_einsum = spec.workload.einsums[einsum_name]
@@ -139,9 +140,9 @@ def get_jobs(
                 fusable_tensors=fusable_tensors & workload_einsum.tensor_names,
                 stride_and_halo=stride_and_halo,
                 initial_delta_choices=initial_delta_choices_for_einsum,
-                resource_usage_precision=0,
-                objective_precision=spec.mapper._objective_precision,
-                lossy_resource_usage_precision=spec.mapper._resource_usage_precision,
+                objective_tolerance=spec.mapper.objective_tolerance,
+                resource_usage_tolerance=spec.mapper.resource_usage_tolerance,
+                workload_n_einsums=n_einsums,
             )
             for j in make_pmapping_templates(job, print_progress):
                 jobs.setdefault(j.compatibility, SameCompatibilityJobs()).append(j)
@@ -154,6 +155,7 @@ def get_jobs(
         for e in spec.workload.einsum_names
     }
 
+    n_einsums = len(spec.workload.einsum_names)
     for einsum_name, jobs in parallel(
         [
             delayed(make_jobs_for_einsum)(
@@ -161,6 +163,7 @@ def get_jobs(
                 spec._for_einsum(einsum_name),
                 stride_and_halo,
                 initial_delta_chocies[einsum_name],
+                n_einsums,
             )
             for einsum_name, spec in einsum2spec.items()
         ],
@@ -417,18 +420,18 @@ def _allocate_jobs(einsum2jobs, print_progress: bool = True):
             for job_list in jobs.values()
         )
 
-    split = False
-    if (
-        not split
-        and is_using_parallel_processing()
-        and len(calls) < get_n_parallel_jobs() * 4
-    ):
-        if print_progress:
-            print(
-                f"Insufficient jobs available to utilize available threads. "
-                f"Splitting jobs into smaller chunks."
-            )
-        split = True
+    split = True
+    # if (
+    #     not split
+    #     and is_using_parallel_processing()
+    #     and len(calls) < get_n_parallel_jobs() * 4
+    # ):
+    #     if print_progress:
+    #         print(
+    #             f"Insufficient jobs available to utilize available threads. "
+    #             f"Splitting jobs into smaller chunks."
+    #         )
+    #     split = True
 
     if split:
         calls = []

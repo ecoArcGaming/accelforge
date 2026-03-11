@@ -83,6 +83,8 @@ class Job:
 
     ranks_with_tile_pattern: set[Rank] | None = None
 
+    intermediate_tensors: set[TensorName] | None = None
+
     @property
     def einsum(self) -> Einsum:
         return self.spec_one_einsum.workload.einsums[self.einsum_name]

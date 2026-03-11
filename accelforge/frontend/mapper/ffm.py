@@ -149,3 +149,9 @@ class FFM(EvalableModel):
     this, as well as objective_tolerance, to a greater-than-zero value will reduce
     memory usage for the mapper.
     """
+
+    _let_non_intermediate_tensors_respawn_in_backing_storage: bool = False
+    """
+    If set to True, we can have temporal loops above the backing storage for
+    non-intermediate tensors, which effectively causes them to respawn.
+    """

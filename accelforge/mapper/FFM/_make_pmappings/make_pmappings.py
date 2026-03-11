@@ -125,6 +125,7 @@ def get_jobs(
         ],
         initial_delta_choices_for_einsum: dict[RankVariable, frozenset[int]],
         n_einsums: int,
+        intermediate_tensors: set[TensorName],
     ):
         jobs = {}
         workload_einsum = spec.workload.einsums[einsum_name]
@@ -143,6 +144,7 @@ def get_jobs(
                 objective_tolerance=spec.mapper.objective_tolerance,
                 resource_usage_tolerance=spec.mapper.resource_usage_tolerance,
                 workload_n_einsums=n_einsums,
+                intermediate_tensors=intermediate_tensors,
             )
             for j in make_pmapping_templates(job, print_progress):
                 jobs.setdefault(j.compatibility, SameCompatibilityJobs()).append(j)
@@ -155,6 +157,10 @@ def get_jobs(
         for e in spec.workload.einsum_names
     }
 
+    input_tensors = set.union(*[e.input_tensor_names for e in spec.workload.einsums])
+    output_tensors = set.union(*[e.output_tensor_names for e in spec.workload.einsums])
+    intermediate_tensors = input_tensors & output_tensors
+
     n_einsums = len(spec.workload.einsum_names)
     for einsum_name, jobs in parallel(
         [
@@ -164,6 +170,7 @@ def get_jobs(
                 stride_and_halo,
                 initial_delta_chocies[einsum_name],
                 n_einsums,
+                intermediate_tensors,
             )
             for einsum_name, spec in einsum2spec.items()
         ],

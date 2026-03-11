@@ -309,9 +309,13 @@ def iterate_mappings_no_constraints(
             spec.mapper.max_fused_loops,
             fanouts,
             fusable_tensors,
+            job.intermediate_tensors,
+            spec.mapper._let_non_intermediate_tensors_respawn_in_backing_storage,
         ):
             mapping = copy.deepcopy(mapping)
-            insert_spatial_loops(mapping, einsum, flattened_arch)
+            insert_spatial_loops(
+                mapping, einsum, flattened_arch, job.intermediate_tensors
+            )
             mapping = unpack_loops_to_rank_variables(mapping)
             if spec.mapper._timeloop_style_even:
                 mapping = _timeloop_style_even(mapping)

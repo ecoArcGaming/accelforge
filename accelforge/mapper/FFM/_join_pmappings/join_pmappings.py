@@ -118,6 +118,7 @@ def prune_with_tolerance(
         return pmappings
 
     prev_n = sum(len(pg.mappings) for p in pmappings.values() for pg in p)
+
     def prune(einsum_name, pg):
         pg.mappings.make_pareto(
             objective_tolerance=objective_tolerance,

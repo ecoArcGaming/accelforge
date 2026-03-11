@@ -42,6 +42,8 @@ def insert_temporal_loops(
     max_fused_loops: int,
     fanouts: dict[str, int],
     fusable_tensors: set[TensorName],
+    intermediate_tensors: set[TensorName],
+    let_non_intermediate_tensors_respawn_in_backing_storage: bool,
 ):
     # First establish insertion points. Insertion points are:
     # - Below the last instance of the first memory
@@ -155,7 +157,11 @@ def insert_temporal_loops(
 
         # No recomputation: If we haven't seen a tensor yet, must only iterate over
         # fully-relevant rank variables.
-        for t in tensors - seen_tensors:
+        check_tensors = tensors
+        if let_non_intermediate_tensors_respawn_in_backing_storage:
+            check_tensors = intermediate_tensors
+
+        for t in check_tensors - seen_tensors:
             rank_variables &= tensor2fully_relevant_rank_vars[t]
 
         if max_fused_loops == 0 and (fusable_tensors - seen_tensors):
@@ -308,10 +314,10 @@ def insert_spatial_loops(
     mapping: list[MappingNode],
     einsum: Einsum,
     flattened_arch: list[arch.Memory],
+    intermediate_tensors: set[TensorName],
 ):
     nodes_with_fanout = [n for n in flattened_arch if n.get_fanout() > 1]
     arch_node_names = [n.name for n in flattened_arch]
-    tensors = einsum.tensor_names
     tensor2fully_relevant_rank_vars = einsum.tensor2directly_indexing_rank_variables
 
     for node in nodes_with_fanout:
@@ -322,7 +328,9 @@ def insert_spatial_loops(
         # No recomputation: If we haven't seen a tensor yet, must only iterate over
         # fully-relevant rank variables.
         rank_variables = einsum.rank_variables
-        for t in tensors - _tensors_seen_above_point(insertion_point, mapping):
+        for t in intermediate_tensors - _tensors_seen_above_point(
+            insertion_point, mapping
+        ):
             rank_variables &= tensor2fully_relevant_rank_vars[t]
 
         for fanout_dim in node.spatial:

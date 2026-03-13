@@ -124,16 +124,14 @@ class PmappingGroup:
         shared_loop_index = self.compatibility.shared_loop_index(check_tensors)
         for t in dead_tensors:
             t = self.tensors.pop(t)
-        if self.mappings.free_to_loop_index(
-            shared_loop_index, live_tensors=live_tensors
-        ):
+        if self.mappings.free_to_loop_index(shared_loop_index):
             self.mappings.make_pareto()
         return self
 
     def _left_consolidate(self, live_tensors: set[str] = None):
         check_tensors = live_tensors or set()
         shared_loop_index = self.compatibility.shared_loop_index(check_tensors)
-        self.mappings.free_to_loop_index(shared_loop_index, live_tensors=live_tensors)
+        self.mappings.free_to_loop_index(shared_loop_index)
         if live_tensors is None:
             self.mappings.clear_fused_loop_symbols()
         return self

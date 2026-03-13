@@ -141,7 +141,7 @@ class PmappingDataframe:
             assert (
                 ignored_resources is not None
             ), "ignored_resources must be set if next_shared_loop_index is set"
-            self.free_to_loop_index(loop_index=next_shared_loop_index)
+            self.free_to_loop_index(next_shared_loop_index)
             self.limit_capacity(
                 next_shared_loop_index=next_shared_loop_index,
                 ignored_resources=ignored_resources,
@@ -255,12 +255,7 @@ class PmappingDataframe:
         self.make_pareto()
 
     @error_check_wrapper
-    def free_to_loop_index(
-        self,
-        loop_index: int,
-        live_tensors: set[int] = None,
-        check_correctness: bool = CHECK_CORRECTNESS,
-    ) -> bool:
+    def free_to_loop_index(self, loop_index: int) -> bool:
         """
            A  B
             / | --- 0
@@ -635,7 +630,7 @@ class PmappingDataframe:
             result.check_above_subset_below(live_tensors)
             result.check_reservations(live_tensors)
 
-        result.free_to_loop_index(next_shared_loop_index, live_tensors=live_tensors)
+        result.free_to_loop_index(next_shared_loop_index)
         if not CHECK_CORRECTNESS:
             result.limit_capacity(
                 next_shared_loop_index, ignored_resources=ignored_resources
@@ -917,7 +912,7 @@ class PmappingDataframe:
 
     #     self = self.copy()
 
-    #     self.free_to_loop_index(-1, check_correctness=False)
+    #     self.free_to_loop_index(-1)
     #     self.shift_bottom_reservation_left(-1)
 
     #     for i, r in self.data.iterrows():

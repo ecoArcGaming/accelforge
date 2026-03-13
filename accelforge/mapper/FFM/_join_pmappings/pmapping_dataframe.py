@@ -191,7 +191,7 @@ class PmappingDataframe:
             for below in columns:
                 if (name_nloops := col2reservation(below)) is None:
                     raise ValueError(f"{below} is not a valid reservation column")
-                name, nloops = name_nloops
+                name, nloops = name_nloops.name, name_nloops.nloops
                 above = get_reservation_or_parent(
                     name, nloops - 1, l_reservations, r_reservations
                 )
@@ -236,11 +236,10 @@ class PmappingDataframe:
         """
         l_reservations, r_reservations = {}, {}
         for c in self.data.columns:
-            if (name_nloops := col2reservation(c)) is not None:
-                name, nloops = name_nloops
+            if (key := col2reservation(c)) is not None:
                 target = l_reservations if is_left_col(c) else r_reservations
-                target.setdefault(name, set()).add(nloops)
-                assert nloops >= -1
+                target.setdefault(key.name, set()).add(key.nloops)
+                assert key.nloops >= -1
 
         return l_reservations, r_reservations
 

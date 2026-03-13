@@ -47,7 +47,9 @@ def shift_reservations_by_null_loop_indices(
     for c in mappings.columns:
         if not is_reservation_col(c):
             continue
-        name, above = col2reservation(c)
+        reservation = col2reservation(c)
+        name = reservation.name
+        above = reservation.nloops
         new_above = above - sum(above > i for i in null_loop_indices)
         target = reservation2col(name, new_above)
         if target in target2newabovename:

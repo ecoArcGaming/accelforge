@@ -242,7 +242,7 @@ def multi_strategy_join(
                 maxvalue = joined.data[c].max()
                 if maxvalue > 1:
                     if print_progress:
-                        oversubscribed = f"{col2reservation(c)[0]} ({maxvalue * 100:.2f}%)"
+                        oversubscribed = f"{col2reservation(c).name} ({maxvalue * 100:.2f}%)"
                         print(f"Oversubscribed {oversubscribed}. Reducing threshold...")
                     break
         else:
@@ -351,9 +351,9 @@ def get_memories_to_track(
     for _, einsum_pmapping_groups in pmapping_groups.items():
         for s in einsum_pmapping_groups:
             for col in s.mappings.data.columns:
-                name_nloops = col2reservation(col)
-                if name_nloops is not None:
-                    always_below.add(col2reservation(col)[0])
+                reservation_key = col2reservation(col)
+                if reservation_key is not None:
+                    always_below.add(reservation_key.name)
 
     total_sizes = {}
     ignored_resources = set()
@@ -363,11 +363,12 @@ def get_memories_to_track(
         for s in einsum_pmapping_groups:
             n_fused_loops = s.compatibility.n_loops
             for col in s.mappings.data.columns:
-                name_nloops = col2reservation(col)
-                if name_nloops is None:
+                reservation_key = col2reservation(col)
+                if reservation_key is None:
                     continue
 
-                name, nloops = name_nloops
+                name = reservation_key.name
+                nloops = reservation_key.nloops
                 if name in always_below and nloops < n_fused_loops:
                     always_below.remove(name)
                 # Check each of the compatibility's tensors

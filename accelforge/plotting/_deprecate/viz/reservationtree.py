@@ -277,10 +277,10 @@ def mappings2reservationtree(
     if add_reservations is not None:
         for einsum, reservations in add_reservations.items():
             for resource, size in dict(reservations).items():
-                nameloop = col2reservation(resource)
-                if nameloop is None:
+                reservation = col2reservation(resource)
+                if reservation is None:
                     continue
-                name, _ = nameloop
+                name = reservation.name
                 node = root.find_node_with(get_einsum_key(einsum))
                 node.this_level.append(TensorReservation("Reservation", -1, name, size))
 

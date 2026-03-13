@@ -1,3 +1,4 @@
+from collections import namedtuple
 import functools
 import re
 import pandas as pd
@@ -28,10 +29,6 @@ TILE_SHAPE_PREFIX = "tile_shape"
 
 DICT_COLUMNS = set([MAPPING_COLUMN])
 RESERVED_COLUMNS = DICT_COLUMNS
-
-_resource_name_nloops_reg = re.compile(r"RESOURCE_(.+?)(?:_LEFT)?_LEVEL_(-?\d+)")
-
-_resource_name_tensor_reg = re.compile(r"RESOURCE_(.+?)_LEVEL_(.+?)")
 
 
 def dict_cached(func):
@@ -129,18 +126,19 @@ def col2energy(colname: str) -> ActionKey | VerboseActionKey:
         raise ValueError(f"bad column name: {colname}")
 
 
+ReservationKey = namedtuple("ReservationKey", ["name", "nloops"])
 @dict_cached
-def col2reservation(x: str) -> tuple[str, int] | None:
-    """Format: reservation name level left"""
+def col2reservation(x: str) -> ReservationKey | None:
+    """Format: reservation name nloops left"""
     x = partition_col(x, "reservation", 4)
     if x is None:
         return None
-    return x[0], int(x[1])
+    return ReservationKey(x[0], int(x[1]))
 
 
 @dict_cached
 def reservation2col(name: str, nloops: int, left: bool = False) -> str:
-    """Format: reservation name level left"""
+    """Format: reservation name nloops left"""
     return f"reservation<SEP>{name}<SEP>{nloops}<SEP>" + ("left" if left else "right")
 
 

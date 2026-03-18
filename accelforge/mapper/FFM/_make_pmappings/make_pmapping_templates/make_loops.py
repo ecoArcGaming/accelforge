@@ -5,6 +5,7 @@ import itertools
 from enum import Enum
 
 import accelforge.frontend.arch as arch
+from accelforge.util._frozenset import oset
 from accelforge.frontend.mapping import (
     MappingNode,
     Toll,
@@ -83,7 +84,7 @@ def insert_temporal_loops(
     tensors = einsum.tensor_names
 
     is_fused_loops = True
-    seen_tensors = set()
+    seen_tensors = oset()
     choices = []
     lowering_choices: list[tuple[bool, ...]] = []
 
@@ -126,19 +127,19 @@ def insert_temporal_loops(
 
         rank_variables = einsum.rank_variables
         # rank_variables = {r for r in rank_variables if rank_variable_bounds[r] > 1}
-        seen_tensors |= set.union(*(set(t.tensors) for t in prev_storages), set())
+        seen_tensors |= oset.union(*(oset(t.tensors) for t in prev_storages), oset())
         is_fused_loops = is_fused_loops and len(fusable_tensors - seen_tensors) > 0
-        prev_tensors = set.union(set(), *(set(t.tensors) for t in prev_storages))
-        next_persistent = set.union(
-            set(), *(set(t.tensors) for t in next_storages if t.persistent)
+        prev_tensors = oset.union(oset(), *(oset(t.tensors) for t in prev_storages))
+        next_persistent = oset.union(
+            oset(), *(oset(t.tensors) for t in next_storages if t.persistent)
         )
 
         max_fanout_before = max(
             [fanouts[s2.component] for s in split_mapping[:i] for s2 in s],
             default=float("inf"),
         )
-        cur_fanout = set(fanouts[s2.component] for s2 in prev_storages)
-        next_fanout = set(fanouts[s2.component] for s2 in next_anything)
+        cur_fanout = oset(fanouts[s2.component] for s2 in prev_storages)
+        next_fanout = oset(fanouts[s2.component] for s2 in next_anything)
         if len(cur_fanout) == 0:  # Happens if we're inserting above all storage nodes
             cur_fanout.add(1)
         if len(next_fanout) == 0:  # Happens if we're inserting below all storage nodes
@@ -152,7 +153,7 @@ def insert_temporal_loops(
 
         # Can't have loops above persistent tensor holders
         if next_persistent:
-            rank_variables &= set()
+            rank_variables &= oset()
 
         # No recomputation: If we haven't seen a tensor yet, must only iterate over
         # fully-relevant rank variables.
@@ -164,7 +165,7 @@ def insert_temporal_loops(
             rank_variables &= tensor2fully_relevant_rank_vars[t]
 
         if max_fused_loops == 0 and (fusable_tensors - seen_tensors):
-            rank_variables &= set()
+            rank_variables &= oset()
 
         #  The fanout for a prior node may be placed here, so spatial nodes may be moved
         #  here
@@ -187,7 +188,7 @@ def insert_temporal_loops(
             # spatials down, which would constrain the temporals due to spatial-temporal
             # crossing.
             if prev_storages and isinstance(prev_storages[0], Toll):
-                rank_variables &= set()
+                rank_variables &= oset()
 
             # Optimality-preserving optimization: We can trivially lower non-backing
             # TensorHolder nodes through fully-relevant loops. Can't do this if the
@@ -223,16 +224,16 @@ def insert_temporal_loops(
         # Determine whether to lower TensorHolder nodes through partially-relevant
         # loops.
         # =============================================================================
-        partially_relevant_to_previous = rank_variables & set.union(
-            set(), *(tensor2partially_relevant_rank_vars[t] for t in prev_tensors)
+        partially_relevant_to_previous = rank_variables & oset.union(
+            oset(), *(tensor2partially_relevant_rank_vars[t] for t in prev_tensors)
         )
-        permutable_partially_relevant = set()
+        permutable_partially_relevant = oset()
 
         # NOTE: If the lowering logic for backing TensorHolders is updated & we can
         # lower through >1 loops, then also update label_fused_loops
         for s in prev_storages:
-            partially_relevant_to_previous = set.union(
-                set(), *(tensor2partially_relevant_rank_vars[t] for t in s.tensors)
+            partially_relevant_to_previous = oset.union(
+                oset(), *(tensor2partially_relevant_rank_vars[t] for t in s.tensors)
             )
             partially_relevant_to_previous &= rank_variables
             lowerable_backing = (
@@ -348,12 +349,12 @@ def insert_spatial_loops(
 
 
 def _tensors_seen_above_point(idx, mapping):
-    seen_tensors = set()
+    seen_tensors = oset()
     for i in range(idx):
         node = mapping[i]
         if not isinstance(node, TensorHolder):
             continue
-        seen_tensors |= set(node.tensors)
+        seen_tensors |= oset(node.tensors)
     return seen_tensors
 
 

@@ -9,6 +9,7 @@ import inspect
 import itertools
 import pydot
 
+from accelforge.util._frozenset import oset
 from typing import (
     # Collections
     Any,
@@ -413,9 +414,9 @@ class Loop(MappingNode):
             )
 
         my_rv, other_rv = self.rank_variable, other.rank_variable
-        my_rv = my_rv if isinstance(my_rv, (set, frozenset)) else set((my_rv,))
+        my_rv = my_rv if isinstance(my_rv, (set, frozenset)) else oset((my_rv,))
         other_rv = (
-            other_rv if isinstance(other_rv, (set, frozenset)) else set((other_rv,))
+            other_rv if isinstance(other_rv, (set, frozenset)) else oset((other_rv,))
         )
         return type(self)(
             rank_variable=my_rv | other_rv,
@@ -546,7 +547,7 @@ class TensorHolder(MappingNode):
     """ Which tensor(s) the Mapper must keep here. Do not set this! Used internally by
     the Mapper."""
 
-    _backing: Set[TensorName] = set()
+    _backing: Set[TensorName] = oset()
     """ Which tensor(s) are backed by this node. Do not set this! Used internally by
     the Mapper."""
 
@@ -563,7 +564,7 @@ class TensorHolder(MappingNode):
     def __eq__(self, other: Any) -> bool:
         return (
             isinstance(other, TensorHolder)
-            and set(self.tensors) == set(other.tensors)
+            and oset(self.tensors) == oset(other.tensors)
             and self.component == other.component
         )
 
@@ -769,7 +770,7 @@ class MappingNodeWithChildren(MappingNode):
                     if isinstance(n, Loop):
                         break
                     # Don't lift a storage above a storage for the same tensor
-                    if isinstance(n, TensorHolder) and set(n.tensors) & set(
+                    if isinstance(n, TensorHolder) and oset(n.tensors) & oset(
                         node.tensors
                     ):
                         break
@@ -777,7 +778,7 @@ class MappingNodeWithChildren(MappingNode):
                     # different component
                     if (
                         isinstance(n, Reservation)
-                        and set(n.purposes) & set(node.tensors)
+                        and oset(n.purposes) & oset(node.tensors)
                         and n.resource != node.component
                     ):
                         break
@@ -818,12 +819,12 @@ class MappingNodeWithChildren(MappingNode):
                     if isinstance(n, Loop):
                         break
                     # Don't lift a reservation above a reservation for the same tensor
-                    if isinstance(n, TensorHolder) and set(node.purposes) & set(
+                    if isinstance(n, TensorHolder) and oset(node.purposes) & oset(
                         n.tensors
                     ):
                         break
                     # Don't lift a reservation above a storage for the same tensor
-                    if isinstance(n, Reservation) and set(n.purposes) & set(
+                    if isinstance(n, Reservation) and oset(n.purposes) & oset(
                         node.purposes
                     ):
                         break
@@ -918,7 +919,7 @@ class MappingNodeWithChildren(MappingNode):
 
     def _remove_reservations_for_tolls(self) -> None:
         tolls = self.get_nodes_of_type(Toll)
-        toll_names = set(ps.component for ps in tolls)
+        toll_names = oset(ps.component for ps in tolls)
         reservations = self.get_nodes_of_type(Reservation)
         remove = [r for r in reservations if r.resource in toll_names]
         self.clear_nodes(*remove)
@@ -1001,10 +1002,10 @@ class Nested(MappingNodeWithChildren):
         return self.nodes[0]._render_node_name()
 
     def _get_n_shared_loops(self, other: "Nested") -> int:
-        my_backing = set(
+        my_backing = oset(
             (t, s.component) for s in self._get_backers() for t in s._backing
         )
-        other_backing = set(
+        other_backing = oset(
             (t, s.component) for s in other._get_backers() for t in s._backing
         )
         shared_backing = my_backing & other_backing
@@ -1146,7 +1147,7 @@ class Nested(MappingNodeWithChildren):
                 l.rank_variable = (
                     l.rank_variable
                     if isinstance(l.rank_variable, set)
-                    else set([l.rank_variable])
+                    else oset([l.rank_variable])
                 )
                 for l2 in may_not_have_one:
                     if l2.calculated_n_iterations == l.calculated_n_iterations:
@@ -1162,12 +1163,12 @@ class Nested(MappingNodeWithChildren):
                 my_rv = (
                     l.rank_variable
                     if isinstance(l.rank_variable, set)
-                    else set([l.rank_variable])
+                    else oset([l.rank_variable])
                 )
                 other_rv = (
                     l2.rank_variable
                     if isinstance(l2.rank_variable, set)
-                    else set([l2.rank_variable])
+                    else oset([l2.rank_variable])
                 )
                 if switched:
                     my_rv, other_rv = other_rv, my_rv
@@ -1177,7 +1178,7 @@ class Nested(MappingNodeWithChildren):
                 for compute in self.get_nodes_of_type(Compute):
                     for r in my_rv:
                         l._einsum_to_rank_variables[compute.einsum] = r
-                rv = rv if isinstance(rv, set) else set([rv])
+                rv = rv if isinstance(rv, set) else oset([rv])
                 l.rank_variable = l.rank_variable | rv
                 for compute in other.get_nodes_of_type(Compute):
                     for r in other_rv:
@@ -1528,7 +1529,7 @@ class Reservation(MappingNode):
     resource: str
     """ The resource being reserved. """
 
-    _backing: Set[str] = set()
+    _backing: Set[str] = oset()
     """ Tensors for which this reservation is reserving the tensor's backing storage.
     """
 
@@ -1665,7 +1666,7 @@ class Mapping(Nested):
         """
         # All intermediate tensors that can be found in this mapping
         # Note: `fusable_tensors` may be for **whole workload**.
-        relevant_intermediate_tensors = set()
+        relevant_intermediate_tensors = oset()
         for node in self.nodes:
             if isinstance(node, Reservation):
                 if node.purpose in fusable_tensors:
@@ -1712,7 +1713,7 @@ class Mapping(Nested):
         ):
             graph.add_node(node)
 
-        color_keys = set()
+        color_keys = oset()
         all_nodes = self._flatten()
         for node in all_nodes:
             if isinstance(node, TensorHolder):
@@ -1732,7 +1733,7 @@ class Mapping(Nested):
                     # graph_node.set_fillcolor(color_map[node._color_key()])
                     # graph_node.set_style('filled')
 
-        added_edges = set()
+        added_edges = oset()
         child2included_parent = {}
         for parent, child in self._parent2child(None):
             parent_name = parent._render_node_name() if parent is not None else None

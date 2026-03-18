@@ -3,7 +3,7 @@ import functools
 import re
 import pandas as pd
 from accelforge.util import NUMPY_FLOAT_TYPE
-from accelforge.util._frozenset import fzs
+from accelforge.util._frozenset import fzs, oset
 from accelforge.frontend.workload import Rank
 from accelforge.util._base_analysis_types import ActionKey, VerboseActionKey
 
@@ -27,7 +27,7 @@ MAPPING_COLUMN = "mapping"
 COMPRESSED_INDEX = "compressed_index"
 TILE_SHAPE_PREFIX = "tile_shape"
 
-DICT_COLUMNS = set([MAPPING_COLUMN])
+DICT_COLUMNS = oset([MAPPING_COLUMN])
 RESERVED_COLUMNS = DICT_COLUMNS
 
 

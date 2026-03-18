@@ -11,6 +11,7 @@ import uuid
 from tqdm import tqdm
 
 import accelforge.frontend.arch as arch
+from accelforge.util._frozenset import oset
 from accelforge.frontend.mapping import (
     Compute,
     Loop,
@@ -158,7 +159,7 @@ def remove_unordered_spatial_temporal_loops(
         if not isinstance(node, TensorHolder):
             continue
 
-        relevent_rvs = set.union(*[tensor2rvs[t] for t in node.tensors])
+        relevent_rvs = oset.union(*[tensor2rvs[t] for t in node.tensors])
 
         # Find the last spatial whose component's fanout is <= the TensorHolder's
         # component fanout. This spatial will affect the TensorHolder's tile.
@@ -178,7 +179,7 @@ def remove_unordered_spatial_temporal_loops(
             if isinstance(node2, Temporal):
                 rv2temporal.setdefault(node2.rank_variable, []).append(node2)
 
-        for shared_rv in sorted(set(rv2spatial) & set(rv2temporal) & relevent_rvs):
+        for shared_rv in sorted(oset(rv2spatial) & oset(rv2temporal) & relevent_rvs):
             disallowed_combinations.append((
                 tuple(id(x) for x in rv2spatial[shared_rv]),
                 tuple(id(x) for x in rv2temporal[shared_rv]),
@@ -188,7 +189,7 @@ def remove_unordered_spatial_temporal_loops(
         disallowed_combinations = [x[1:] for x in disallowed_combinations]
 
     for combo in itertools.product(*disallowed_combinations):
-        combo = set.union(set(), *combo)
+        combo = oset.union(oset(), *combo)
         yield [n for n in mapping if id(n) not in combo]
 
 
@@ -233,12 +234,12 @@ def assert_proper_fusion_labeling(
     fusable_tensors: set[TensorName],
     check_loops: bool = True,
 ):
-    tensors = set()
+    tensors = oset()
     for i, t in enumerate(mapping):
         if not isinstance(t, TensorHolder):
             continue
 
-        new = (set(t.tensors) - tensors) & fusable_tensors
+        new = (oset(t.tensors) - tensors) & fusable_tensors
 
         if new and check_loops:
             for j in range(i):

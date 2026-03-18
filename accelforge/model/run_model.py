@@ -3,6 +3,7 @@ import accelforge.frontend.arch as arch
 from accelforge.frontend.mapping import TensorHolder
 from accelforge.mapper.FFM._make_pmappings.pmapper_job import Job
 from accelforge.model._looptree.reuse import symbolic
+from accelforge.util._frozenset import oset
 from accelforge.model._looptree.reuse.symbolic import (
     analyze_reuse_and_add_reservations_to_mapping,
 )
@@ -113,7 +114,7 @@ def run_model(
 
     n_instances = workload.n_instances * workload.einsums[job.einsum_name].n_instances
 
-    n_loop_options = set()
+    n_loop_options = oset()
     for buffet, stats in reuse.buffet_stats.items():
         if buffet.level == compute_unit:
             continue

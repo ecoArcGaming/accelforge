@@ -1,6 +1,7 @@
 import copy
 from dataclasses import dataclass, field
 from accelforge.frontend.arch import Network as NetworkSpec
+from accelforge.util._frozenset import oset
 from accelforge.frontend.mapping import (
     Compute,
     Mapping,
@@ -374,7 +375,7 @@ class SymbolicAnalysisOutput:
         return result
 
     def add_buffet_stats_and_symbols(self, other: "SymbolicAnalysisOutput"):
-        assert not (set(self.buffet_stats) & set(other.buffet_stats)), "BUG"
+        assert not (oset(self.buffet_stats) & oset(other.buffet_stats)), "BUG"
         self.buffet_stats.update(other.buffet_stats)
         # if self.temporal_steps != other.temporal_steps:
         #     print(f'Temporal steps are different.')
@@ -388,7 +389,7 @@ class SymbolicAnalysisOutput:
                 assert self.compute_stats[key].total_ops == other.compute_stats[key].total_ops
 
     def add_network_stats(self, other: "SymbolicAnalysisOutput"):
-        assert not (set(self.network_stats) & set(other.network_stats)), "BUG"
+        assert not (oset(self.network_stats) & oset(other.network_stats)), "BUG"
         self.network_stats.update(other.network_stats)
 
 
@@ -590,7 +591,7 @@ def analyze_reuse_and_add_reservations_to_mapping(
             mapping=cur_mapping.nodes,
             workload=workload,
             full_rank_variable_shapes=job.rank_variable_bounds,
-            all_tensors=set([tensor]) if tensor is not None else set(),
+            all_tensors=oset([tensor]) if tensor is not None else oset(),
             einsum_tensor_to_projection=einsum_tensor_to_projection,
             tensor_to_relevancy=tensor_to_relevancy,
             tensor_to_backer_id=tensor_to_backer_id,
@@ -600,7 +601,7 @@ def analyze_reuse_and_add_reservations_to_mapping(
                 cur_mapping.nodes
             ),
             precomputed_iterations=precomputed_iterations,
-            tensor_rank_variables=einsum.tensor2rank_variables.get(tensor, set()),
+            tensor_rank_variables=einsum.tensor2rank_variables.get(tensor, oset()),
             is_recording_iterations=tensor is None,
         )
         cur_result = analyze_node(0, job.rank_variable_bounds, info)
@@ -711,7 +712,7 @@ def insert_reservation_nodes(
 ):
     trackers: list[ReservationAnalysisTracker] = []
     einsum = info.workload.einsums[mapping[-1].einsum]
-    seen_tensors = set()  # reservation for top-level buffets cannot be lowered
+    seen_tensors = oset()  # reservation for top-level buffets cannot be lowered
 
     n_nodes = len(mapping)
     i = 0
@@ -1522,12 +1523,12 @@ def make_possibly_different_last(common_tile_shape, factor, full_shape):
 def insert_sympy_symbols(mapping: list[MappingNode], job: Job):
     loop_idx = 0
     symbols = []
-    rank_var_with_initial = set()
+    rank_var_with_initial = oset()
     for i, node in enumerate(mapping):
         if not isinstance(node, Loop):
             continue
 
-        stride_halos = set()
+        stride_halos = oset()
         for t in job.spec_one_einsum.workload.einsums[job.einsum_name].tensor_names:
             cur_stride_halo = job.stride_and_halo[job.einsum_name, t]
             for (rank, rank_variable), (stride, halo) in cur_stride_halo.items():

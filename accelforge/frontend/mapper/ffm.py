@@ -155,3 +155,22 @@ class FFM(EvalableModel):
     If set to True, we can have temporal loops above the backing storage for
     non-intermediate tensors, which effectively causes them to respawn.
     """
+
+    _skip_invalid: bool = True
+    """
+    Whether to skip invalid joinings. This is used for a paper ablation study. Do not
+    use this unless you're ablating or want to burn CPU cycles.
+    """
+
+    _combine_reservations: bool = True
+    """
+    Whether to combine reservations to increase pruning effectiveness. This is used for
+    a paper ablation study. Do not use this unless you're ablating or want to burn CPU
+    cycles.
+    """
+
+    _runtime_log_file: str | None = None
+    """
+    If set, append per-step runtime as JSON lines to this file. Used for ablation study
+    measurements.
+    """

@@ -283,12 +283,7 @@ class Compatibility(Updatable):
         return self.n_loops, self.tensors, self.reservation_indices
 
     def __hash__(self):
-        try:
-            return object.__getattribute__(self, "_hash_cached")
-        except AttributeError:
-            val = hash(self._get_hash_tuple())
-            object.__setattr__(self, "_hash_cached", val)
-            return val
+        return hash(self._get_hash_tuple())
 
     def __eq__(self, other):
         if self is other:

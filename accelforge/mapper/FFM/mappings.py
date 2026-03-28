@@ -10,7 +10,7 @@ from accelforge.mapper.FFM._make_pmappings.make_pmappings import (
     get_per_tensor_size,
 )
 from typing import Union
-import numpy as np
+from accelforge._accelerated_imports import numpy as np
 from numbers import Integral
 
 
@@ -368,18 +368,28 @@ class Mappings:
         """
         new_df = self.data.copy()
         total_computes = self.num_computes()
+        einsum2computes = {
+            einsum: self.num_computes(einsum) for einsum in self.einsum_names
+        }
         for col in new_df.columns:
             n_computes = total_computes
             if per_einsum:
                 einsum_name = col.split("<SEP>")[0]
-                if einsum_name not in self.einsum_names and einsum_name != "Total":
+                if einsum_name not in self.einsum_names and einsum_name not in [
+                    "Total",
+                    "reservation",
+                ]:
                     raise ValueError(
                         f"Einsum name {einsum_name} not found. Ensure that all "
                         f"columns are prefixed with the Einsum name if per_einsum "
                         f"is True."
                     )
-                if einsum_name != "Total":
-                    n_computes = self.num_computes(einsum_name)
+                if einsum_name == "Total":
+                    n_computes = total_computes
+                elif einsum_name == "reservation":
+                    n_computes = 1
+                else:
+                    n_computes = einsum2computes[einsum_name]
             # Check if the column can be converted to numeric
             try:
                 new_df[col] /= n_computes
@@ -394,6 +404,29 @@ class Mappings:
         """
         new_df = self.data.copy()
         new_df = new_df[(c for c in new_df.columns if (new_df[c] != 0).any())]
+        return self._update(data=new_df)
+
+    def drop_components_with_zero_energy_and_latency(self) -> "Mappings":
+        """
+        Returns a new Mappings object with all columns removed for components that have
+        zero energy AND zero latency across all einsums.
+        """
+        keep = set(
+            {k for k, v in self.energy(per_component=True).items() if v != 0}
+        ) | set({k for k, v in self.latency(per_component=True).items() if v != 0})
+
+        # Drop columns for components not in keep
+        def should_keep(col):
+            parts = col.split("<SEP>")
+            if len(parts) >= 3 and (parts[1] == "energy" or parts[1] == "action"):
+                comp = parts[2]
+                return comp in keep
+            if len(parts) == 3 and parts[1] == "latency":
+                comp = parts[2]
+                return comp in keep
+            return True  # Keep non-component columns (Total, mapping, etc.)
+
+        new_df = self.data[[c for c in self.data.columns if should_keep(c)]]
         return self._update(data=new_df)
 
     def _repr_svg_(self) -> str:

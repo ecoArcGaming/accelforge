@@ -56,10 +56,13 @@ class InvertibleSet(BaseModel, Generic[T]):
         self._bits_per_value = value
 
     def __reduce__(self):
-        return (_reconstruct_invertible_set, (
-            self.__dict__,
-            getattr(self, "__pydantic_private__", {}),
-        ))
+        return (
+            _reconstruct_invertible_set,
+            (
+                self.__dict__,
+                getattr(self, "__pydantic_private__", {}),
+            ),
+        )
 
     def __getstate__(self):
         return self.__dict__, getattr(self, "__pydantic_private__", {})

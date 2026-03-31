@@ -168,13 +168,19 @@ def insert_tolls(
         toll_tensors = oset(toll.tensors)
         min_pos = 0
         for i, m in enumerate(mapping):
-            if oset(m.tensors) & toll_tensors and arch_order[m.component] < toll_arch_idx:
+            if (
+                oset(m.tensors) & toll_tensors
+                and arch_order[m.component] < toll_arch_idx
+            ):
                 min_pos = max(min_pos, i + 1)
 
         # Rule 2: Must go above the storage node below them
         max_pos = len(mapping)
         for i, m in enumerate(mapping):
-            if oset(m.tensors) & toll_tensors and arch_order[m.component] > toll_arch_idx:
+            if (
+                oset(m.tensors) & toll_tensors
+                and arch_order[m.component] > toll_arch_idx
+            ):
                 max_pos = min(max_pos, i)
                 break
 
@@ -192,9 +198,8 @@ def insert_tolls(
             m_arch_idx = arch_order.get(m.component, -1)
             if m_arch_idx < toll_arch_idx:
                 min_pos = i + 1
-            elif (
-                m_arch_idx == toll_arch_idx
-                and sorted(m.tensors) < sorted(toll.tensors)
+            elif m_arch_idx == toll_arch_idx and sorted(m.tensors) < sorted(
+                toll.tensors
             ):
                 min_pos = i + 1
 

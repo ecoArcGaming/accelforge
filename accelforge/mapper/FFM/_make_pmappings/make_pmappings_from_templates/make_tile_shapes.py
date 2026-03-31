@@ -1568,13 +1568,13 @@ def get_tile_shape_choices(
                         if not objective.try_best_if_none_reaches_min:
                             choices_enumerated = choices_enumerated[valid]
                             choices_enumerated_float = choices_enumerated_float[valid]
-                        else:
+                        elif complete:
                             if valid.any():
                                 choices_enumerated = choices_enumerated[valid]
                                 choices_enumerated_float = choices_enumerated_float[
                                     valid
                                 ]
-                            elif complete:
+                            else:
                                 valid |= result == (
                                     result.max()
                                     if isinstance(result, np.ndarray)
@@ -2061,10 +2061,13 @@ def _make_tile_shapes(job: "Job"):
         component_name,
         name,
     ), constraint in job.constraints.min_usage_constraints.items():
+        usage_key = f"usage<SEP>spatial<SEP>{component_name}<SEP>{name}"
+        if usage_key not in usage_df:
+            continue
         objectives.append(
             Objective(
                 name=f"min_usage_{component_name}_{name}",
-                formula=v,
+                formula=usage_df[usage_key],
                 symbols=symbols,
                 only_care_if_valid=True,
                 min_value=constraint.min_usage,

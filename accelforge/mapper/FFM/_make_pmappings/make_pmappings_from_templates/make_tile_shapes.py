@@ -1374,7 +1374,10 @@ def get_tile_shape_choices(
         # yield the same results. Generally, alt_objectives will be the objective
         # function chosen by the user, while alt_objectives will be actions.
 
-        prune_by = [objectives, alt_objectives]
+        # NOTE: DISABLED THE ABOVE. DOESN'T WORK. If total actions are the same
+        # but per-component actions are different, then the latency may be different!!
+
+        prune_by = [objectives]#, alt_objectives]
         if alt_objectives_first:
             prune_by = prune_by[::-1]
 

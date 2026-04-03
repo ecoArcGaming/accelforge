@@ -1,0 +1,27 @@
+# Simplest possible NMA mapping
+mapping:
+  nodes:
+  - !Storage
+    component: HostDRAM
+    tensors: [Q, K_filt, V_filt, QK_remote, AV_remote]
+
+  - !Storage
+    component: DReX_LPDDR5X
+    tensors: [Q, K_filt, V_filt, QK_remote, AV_remote]
+
+  - !Storage
+    component: NMA_Buffer
+    tensors: [Q, K_filt, V_filt, QK_remote, AV_remote]
+
+  - !Sequential
+    nodes:
+    - !Nested
+      nodes:
+      - !Compute
+        einsum: QK_remote
+        component: NMA_MAC
+    - !Nested
+      nodes:
+      - !Compute
+        einsum: AV_remote
+        component: NMA_MAC

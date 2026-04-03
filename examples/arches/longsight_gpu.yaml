@@ -1,0 +1,41 @@
+# LongSight GPU Path: H100 SXM for projections, local attention, merge/output
+
+arch:
+  nodes:
+  - !Memory
+    name: HostDRAM
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 282e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 282e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: GPU_HBM
+    size: 80 * 1024 * 1024 * 1024 * 8  # 80 GB HBM3
+    total_latency: max(read_latency, write_latency)
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 3.9e-12, latency: 1 / (8 * 3.35e12)}
+    - {name: write, energy: 3.9e-12, latency: 1 / (8 * 3.35e12)}
+    tensors: {keep: All}
+
+  - !Memory
+    name: GPU_SRAM
+    size: 50 * 1024 * 1024 * 8  # ~50 MB L2/shared
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 0.5e-12, latency: 1 / (8 * 10e12)}
+    - {name: write, energy: 0.5e-12, latency: 1 / (8 * 10e12)}
+    tensors: {keep: All}
+
+  - !Compute
+    name: GPU_MAC
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: compute, energy: 0.1e-12, latency: 1 / 989e12}

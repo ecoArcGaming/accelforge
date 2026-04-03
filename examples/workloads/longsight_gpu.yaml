@@ -1,0 +1,49 @@
+# LongSight GPU Workload: Projections + Local Attention + Merge + Output
+# Llama-3-8B with GQA (32 Q heads, 8 KV heads, dim=128)
+
+workload:
+  rank_sizes:
+    {% set BATCH_SIZE = BATCH_SIZE | default(1) %}
+    {% set W = W | default(1024) %}
+    B: {{BATCH_SIZE}}
+    M: 1
+    H_KV: 8
+    G: 4
+    E: 128
+    D: 4096
+    P_W: {{W}}
+
+  bits_per_value: {All: 16}
+  persistent_tensors: weight - Intermediates
+
+  einsums:
+  # Q/K/V Projections
+  - {einsum: "I[b, m, d] = I_in[b, m, d]", is_copy_operation: True}
+  - "Q[b, m, h_kv, g, e] = I[b, m, d] * WQ[h_kv, g, e, d]"
+  - "K_new[b, m, h_kv, e] = I[b, m, d] * WK[h_kv, e, d]"
+  - "V_new[b, m, h_kv, e] = I[b, m, d] * WV[h_kv, e, d]"
+
+  # Dense Sliding-Window Attention
+  - einsum: "QK_local[b, m, p_w, h_kv, g] = Q[b, m, h_kv, g, e] * K_local[b, p_w, h_kv, e]"
+    renames: {input: Q}
+  - {einsum: "A_local[b, m, p_w, h_kv, g] = QK_local[b, m, p_w, h_kv, g]", is_copy_operation: True}
+  - einsum: "AV_local[b, m, h_kv, g, e] = A_local[b, m, p_w, h_kv, g] * V_local[b, p_w, h_kv, E: e]"
+    renames: {input: A_local}
+
+  # Merge + Output Projection
+  - {einsum: "AV_merged[b, m, h_kv, g, e] = AV_local[b, m, h_kv, g, e]", is_copy_operation: True}
+  - "Z[b, m, d] = AV_merged[b, m, h_kv, g, e] * WZ[h_kv, g, e, d]"
+
+renames:
+  einsums:
+  - name: default
+    tensor_accesses:
+    - name: input
+      source: Inputs & Intermediates if len(All) == 3 else Inputs
+      expected_count: 1
+    - name: output
+      source: Outputs
+      expected_count: 1
+    - name: weight
+      source: ~(input | output)
+      expected_count: 1 if len(All) == 3 else 0

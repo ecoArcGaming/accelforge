@@ -1,0 +1,47 @@
+# LongSight NMA Path: DReX CXL Memory Expander for remote attention
+# 8 NMAs (26.11 TFlop/s total), 512 GB LPDDR5X (1.1 TB/s)
+
+arch:
+  nodes:
+  - !Memory
+    name: HostDRAM
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 282e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 282e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: DReX_LPDDR5X
+    size: 512 * 1024 * 1024 * 1024 * 8  # 512 GB
+    total_latency: max(read_latency, write_latency)
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 5.0e-12, latency: 1 / (8 * 1.1e12)}
+    - {name: write, energy: 5.0e-12, latency: 1 / (8 * 282e9)}
+    tensors: {keep: All}
+
+  - !Container
+    name: NMA_Array
+    spatial:
+    - {name: Z, fanout: 8, may_reuse: Nothing, min_usage: 1}
+
+  - !Memory
+    name: NMA_Buffer
+    size: 256 * 1024 * 8  # 256 KB per NMA
+    leak_power: 0
+    area: 15.1e-6  # 15.1 mm^2 per NMA (at 16nm)
+    actions:
+    - {name: read,  energy: 0.25e-12, latency: 0}
+    - {name: write, energy: 0.25e-12, latency: 0}
+    tensors: {keep: All}
+
+  - !Compute
+    name: NMA_MAC
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: compute, energy: 0.33e-12, latency: 1 / (26.11e12 / 8)}

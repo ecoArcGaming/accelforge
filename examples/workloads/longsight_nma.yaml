@@ -1,0 +1,38 @@
+# LongSight NMA Workload: Remote Attention on DReX (top-k filtered)
+# Simplified: softmax folded into AV (no copy operation)
+
+workload:
+  rank_sizes:
+    {% set BATCH_SIZE = BATCH_SIZE | default(1) %}
+    {% set TOP_K = TOP_K | default(1024) %}
+    B: {{BATCH_SIZE}}
+    M: 1
+    H_KV: 8
+    G: 4
+    E: 128
+    P_FILT: {{TOP_K}}
+
+  bits_per_value: {All: 16}
+  persistent_tensors: weight - Intermediates
+
+  einsums:
+  # QK dot product on filtered keys
+  - einsum: "QK_remote[b, m, p_filt, h_kv, g] = Q[b, m, h_kv, g, e] * K_filt[b, p_filt, h_kv, e]"
+    renames: {input: Q}
+  # Attention-value product (softmax implicitly applied)
+  - einsum: "AV_remote[b, m, h_kv, g, e] = QK_remote[b, m, p_filt, h_kv, g] * V_filt[b, p_filt, h_kv, E: e]"
+    renames: {input: QK_remote}
+
+renames:
+  einsums:
+  - name: default
+    tensor_accesses:
+    - name: input
+      source: Inputs & Intermediates if len(All) == 3 else Inputs
+      expected_count: 1
+    - name: output
+      source: Outputs
+      expected_count: 1
+    - name: weight
+      source: ~(input | output)
+      expected_count: 1 if len(All) == 3 else 0

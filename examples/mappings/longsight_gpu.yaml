@@ -1,0 +1,134 @@
+# LongSight GPU Mapping: Projections + Local Attention + Merge + Output
+
+mapping:
+  nodes:
+  - !Storage
+    component: HostDRAM
+    tensors: [I_in, I, WQ, WK, WV, WZ, Q, K_new, V_new,
+              K_local, V_local, QK_local, A_local, AV_local,
+              AV_merged, Z]
+
+  - !Sequential
+    nodes:
+    # Q/K/V Projections
+    - !Nested
+      nodes:
+      - !Storage
+        component: GPU_HBM
+        tensors: [I_in, I, WQ, WK, WV, Q, K_new, V_new]
+      - !Sequential
+        nodes:
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [I_in, I]
+          - !Compute
+            einsum: I
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [I, WQ, Q]
+          - !Temporal
+            rank_variable: h_kv
+            tile_shape: 1
+          - !Temporal
+            rank_variable: g
+            tile_shape: 1
+          - !Compute
+            einsum: Q
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [I, WK, K_new]
+          - !Temporal
+            rank_variable: h_kv
+            tile_shape: 1
+          - !Compute
+            einsum: K_new
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [I, WV, V_new]
+          - !Temporal
+            rank_variable: h_kv
+            tile_shape: 1
+          - !Compute
+            einsum: V_new
+            component: GPU_MAC
+
+    # Dense Sliding-Window Attention
+    - !Nested
+      nodes:
+      - !Storage
+        component: GPU_HBM
+        tensors: [Q, K_local, V_local, QK_local, A_local, AV_local]
+      - !Temporal
+        rank_variable: h_kv
+        tile_shape: 1
+      - !Sequential
+        nodes:
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [Q, K_local, QK_local]
+          - !Temporal
+            rank_variable: g
+            tile_shape: 1
+          - !Compute
+            einsum: QK_local
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [QK_local, A_local]
+          - !Compute
+            einsum: A_local
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [A_local, V_local, AV_local]
+          - !Temporal
+            rank_variable: g
+            tile_shape: 1
+          - !Compute
+            einsum: AV_local
+            component: GPU_MAC
+
+    # Merge + Output Projection
+    - !Nested
+      nodes:
+      - !Storage
+        component: GPU_HBM
+        tensors: [AV_local, AV_merged, WZ, Z]
+      - !Sequential
+        nodes:
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [AV_local, AV_merged]
+          - !Compute
+            einsum: AV_merged
+            component: GPU_MAC
+        - !Nested
+          nodes:
+          - !Storage
+            component: GPU_SRAM
+            tensors: [AV_merged, WZ, Z]
+          - !Temporal
+            rank_variable: h_kv
+            tile_shape: 1
+          - !Compute
+            einsum: Z
+            component: GPU_MAC

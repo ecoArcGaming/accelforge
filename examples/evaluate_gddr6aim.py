@@ -60,7 +60,7 @@ def print_result(name, result, scale=1.0):
 def run_mapper(arch, params):
     spec = af.Spec.from_yaml(arch, WORKLOAD, jinja_parse_data=params)
     spec.mapper.metrics = af.Metrics.ENERGY | af.Metrics.LATENCY
-    return spec.map_workload_to_arch(print_progress=False)
+    return spec.map_workload_to_arch(print_progress=True)
 
 
 def evaluate():

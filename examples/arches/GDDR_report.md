@@ -1,8 +1,8 @@
-GDDR6-AiM AccelForge YAML Production Report
+We implemented the in-memory component of GDDR6-AIM, as well as a CPU based baseline that will probably be integrated into a GPU to compute non-memory bound operations. With the help of claude, we produced the following summary to record how the archecture was implemented. We couldn't find much information about the areas of each component, so they haven't been modeled yet. 
 
   Architectural Decision: Two Separate Specs
 
-  Like LongSight, the GDDR6-AiM system is heterogeneous — a host CPU baseline vs. a
+  The GDDR6-AiM system is heterogeneous — a host CPU baseline vs. a
   processing-in-memory accelerator. These are modeled as two independent specs with results combined
    in the Python evaluation script. The same evaluate_mapping join limitation from LongSight
   applies, so both domains use map_workload_to_arch (auto-mapper).
@@ -10,13 +10,13 @@ GDDR6-AiM AccelForge YAML Production Report
   Data Sources
 
   Two sources were used:
-  1. GDDDR.md — the paper description (Sections 1-4)
-  2. aim_simulator/ — a Ramulator-based cycle-accurate simulator cloned into the repo, containing
+  1. GDDDR.md — the paper (Sections 1-4)
+  2. aim_simulator/ — a Ramulator-based cycle-accurate simulator, containing
   exact timing presets, power models, and memory organization in GDDR6.cpp and
   cellar_power_calculator.py
 
   Where the paper gave high-level specs and the simulator gave cycle-accurate parameters, the
-  simulator values were preferred.
+  simulator values were used for specifics.
 
   ---
   1. gddr6aim_host.yaml (Architecture)
@@ -70,7 +70,7 @@ GDDR6-AiM AccelForge YAML Production Report
   Component: ChannelArray
   Value: 32-way spatial
   Source: Simulator: CH_PER_DV = 32.00 (line 10); GDDR6_AiM_org preset: 32 channels
-  Derivation: Jinja template N_CHANNELS defaults to 32
+  Derivation: Smulator Jinja template N_CHANNELS = 32
   ────────────────────────────────────────
   Component: AiM_GDDR6 size
   Value: 512 KB/ch
@@ -125,7 +125,7 @@ GDDR6-AiM AccelForge YAML Production Report
 
   Parameterization: The architecture uses Jinja templates for N_CHANNELS and FREQ_GHZ, allowing the
   evaluation script to model both full-speed (32ch, 2 GHz) and underclocked (4ch, 0.25 GHz)
-  configurations from a single YAML file.
+  configurations from a single YAML file. 
 
   ---
   3. gddr6aim_gpt3_13B.yaml (Workload)
@@ -152,11 +152,7 @@ GDDR6-AiM AccelForge YAML Production Report
   │ M       │ 1       │ 1                  │ Decode phase │
   └─────────┴─────────┴────────────────────┴──────────────┘
 
-  Why small defaults: AccelForge's mapper explores all possible loop tilings, and the search space
-  grows combinatorially with rank sizes. At D=5120 and D_FF=20480, the mapper did not complete
-  within several minutes. Defaults are scaled down to D=64 (80x smaller) maintaining the 1:3:1:4:1
-  ratio. The evaluation script computes a MAC-count scale factor (actual_MACs / model_MACs) and
-  multiplies all energy and latency results accordingly.
+  Defaults were scaled down to manage accelforge latency. 
 
   Einsums:
 
@@ -168,10 +164,6 @@ GDDR6-AiM AccelForge YAML Production Report
   3. FFN_up — Feed-forward up projection: [B,M,D] → [B,M,4D]. Chained from O via the D_OUT: d_out
   rank remapping syntax.
   4. FFN_down — Feed-forward down projection: [B,M,4D] → [B,M,D]. Chained from FFN_up.
-
-  Renames: Each einsum has an explicit renames: {input: <tensor>} because the default rename pattern
-   (Inputs & Intermediates if len(All)==3 else Inputs) fails for the first einsum where X is a pure
-  Input (not an Intermediate). The default rename block only defines output and weight.
 
   ---
   4. gddr6aim_host.yaml (Mapping)
@@ -192,11 +184,6 @@ GDDR6-AiM AccelForge YAML Production Report
   - Scales all results by MAC-count ratio to project to full GPT-3 13B dimensions
   - Reports per-layer and 40-layer latency, energy, and speedup vs CPU baseline
 
-  Evaluation status: The mapper did not complete within the time budget, even with reduced rank
-  sizes (D=64). The 4-einsum workload on a 5-level hierarchy (HostDRAM → FPGA_GPR → AiM_GDDR6 →
-  GlobalBuffer → PU_MAC) with two spatial fanouts (32 channels × 16 banks = 512 PUs) creates a very
-  large mapping search space. Further rank reduction or mapper tuning (max_fused_loops, time_limit)
-  would be needed to get results.
 
   ---
   Summary of Simplifications

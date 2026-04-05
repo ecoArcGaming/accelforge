@@ -1,6 +1,6 @@
 # GDDR6-AiM Accelerator (parameters from aim_simulator Ramulator model)
 #
-# Hardware specs (from GDDR6.cpp timing/org presets + power calculator):
+# Hardware specs: 
 #   - 32 independent GDDR6 channels per device
 #   - 16 banks per channel (4 BG x 4 banks/BG)
 #   - 512 total banks, each with a MAC PU

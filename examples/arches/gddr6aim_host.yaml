@@ -1,0 +1,44 @@
+# GDDR6-AiM CPU Baseline: Intel Xeon Gold 6230 + 4ch DDR4-3200
+#
+# From paper Section 4 verification targets:
+#   CPU: Intel Xeon Gold 6230, 20 cores @ 2.1 GHz, AVX-512
+#   Memory: 4 channels DDR4-3200 = 4 * 25.6 GB/s = 102.4 GB/s
+#
+# For matrix-vector multiply (decode), CPU is memory-bandwidth-bound.
+# Effective compute throughput limited by DRAM bandwidth, not peak FLOPs.
+
+arch:
+  nodes:
+  - !Memory
+    name: HostDRAM
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    # DDR4-3200, 4 channels: 4 * 25.6 GB/s = 102.4 GB/s
+    # Energy: ~7 pJ/bit for DDR4 (from TPU paper reference)
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 102.4e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 102.4e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: L3_Cache
+    size: 28 * 1024 * 1024 * 8  # 28 MB L3 (Xeon Gold 6230)
+    total_latency: max(read_latency, write_latency)
+    leak_power: 0
+    area: 0
+    actions:
+    # L3 cache bandwidth: ~300 GB/s aggregate across all cores
+    - {name: read,  energy: 0.8e-12, latency: 1 / (8 * 300e9)}
+    - {name: write, energy: 0.8e-12, latency: 1 / (8 * 300e9)}
+    tensors: {keep: All}
+
+  - !Compute
+    name: CPU_MAC
+    leak_power: 0
+    area: 0
+    actions:
+    # Xeon Gold 6230: 20 cores, 2 AVX-512 FMA units/core, 32 BF16 ops/FMA
+    # Peak: 20 * 2 * 32 * 2.1e9 = 2.688 TFlop/s
+    # Matvec is bandwidth-bound; effective ~50% utilization = 1.34 TFlop/s
+    - {name: compute, energy: 0.5e-12, latency: 1 / 1.34e12}

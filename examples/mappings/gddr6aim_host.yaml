@@ -1,0 +1,45 @@
+# GDDR6-AiM Host CPU Mapping: GPT-3 13B linear layers on Xeon Gold 6230
+
+mapping:
+  nodes:
+  - !Storage
+    component: HostDRAM
+    tensors: [X, W_QKV, QKV, W_O, O, W_up, FFN_up, W_down, FFN_down]
+
+  - !Sequential
+    nodes:
+    - !Nested
+      nodes:
+      - !Storage
+        component: L3_Cache
+        tensors: [X, W_QKV, QKV]
+      - !Compute
+        einsum: QKV
+        component: CPU_MAC
+
+    - !Nested
+      nodes:
+      - !Storage
+        component: L3_Cache
+        tensors: [QKV, W_O, O]
+      - !Compute
+        einsum: O
+        component: CPU_MAC
+
+    - !Nested
+      nodes:
+      - !Storage
+        component: L3_Cache
+        tensors: [O, W_up, FFN_up]
+      - !Compute
+        einsum: FFN_up
+        component: CPU_MAC
+
+    - !Nested
+      nodes:
+      - !Storage
+        component: L3_Cache
+        tensors: [FFN_up, W_down, FFN_down]
+      - !Compute
+        einsum: FFN_down
+        component: CPU_MAC

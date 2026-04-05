@@ -1,0 +1,53 @@
+# GDDR6-AiM Workload: GPT-3 13B Linear Layers (Decode Phase)
+#
+# GPT-3 13B: d_model=5120, d_ff=20480, 40 heads, 40 layers, BF16
+#
+# Rank sizes are parameterized for fast evaluation. Default values
+# are scaled down but maintain the same 1:3:1:4:1 ratio.
+# The evaluation script scales results by (actual_size / model_size)^2
+# to project to full-size matrices.
+
+workload:
+  rank_sizes:
+    {% set BATCH_SIZE = BATCH_SIZE | default(1) %}
+    {% set D = D | default(64) %}
+    {% set D_QKV = D_QKV | default(192) %}
+    {% set D_FF = D_FF | default(256) %}
+    B: {{BATCH_SIZE}}
+    M: 1
+    D_IN: {{D}}
+    D_QKV: {{D_QKV}}
+    D_OUT: {{D}}
+    D_FF: {{D_FF}}
+    D_FINAL: {{D}}
+
+  bits_per_value: {All: 16}
+  persistent_tensors: weight - Intermediates
+
+  einsums:
+  # Fused QKV projection: [B,M,D] -> [B,M,3D]
+  - einsum: "QKV[b, m, d_qkv] = X[b, m, d_in] * W_QKV[d_in, d_qkv]"
+    renames: {input: X}
+
+  # Output projection: [B,M,D] -> [B,M,D]
+  - einsum: "O[b, m, d_out] = Attn_out[b, m, d_in] * W_O[d_in, d_out]"
+    renames: {input: Attn_out}
+
+  # FFN up: [B,M,D] -> [B,M,4D]
+  - einsum: "FFN_up[b, m, d_ff] = O[b, m, D_OUT: d_out] * W_up[d_out, d_ff]"
+    renames: {input: O}
+
+  # FFN down: [B,M,4D] -> [B,M,D]
+  - einsum: "FFN_down[b, m, d_final] = FFN_up[b, m, d_ff] * W_down[d_ff, d_final]"
+    renames: {input: FFN_up}
+
+renames:
+  einsums:
+  - name: default
+    tensor_accesses:
+    - name: output
+      source: Outputs
+      expected_count: 1
+    - name: weight
+      source: ~(input | output)
+      expected_count: 1

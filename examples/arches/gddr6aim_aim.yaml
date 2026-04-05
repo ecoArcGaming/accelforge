@@ -1,0 +1,104 @@
+# GDDR6-AiM Accelerator (parameters from aim_simulator Ramulator model)
+#
+# Hardware specs (from GDDR6.cpp timing/org presets + power calculator):
+#   - 32 independent GDDR6 channels per device
+#   - 16 banks per channel (4 BG x 4 banks/BG)
+#   - 512 total banks, each with a MAC PU
+#   - Clock: 2 GHz, 16 Gb/s/pin, x16 mode
+#   - Per-channel BW: 4 GB/s; system BW: 128 GB/s
+#   - Compute: 1 TFLOPS BF16 (512 MACs/cycle @ 2 GHz)
+#   - Global Buffer: 256-bit SRAM per PU (2 KB effective)
+#   - FPGA GPR: 512 KB bridge buffer
+#
+# Data flow: HostDRAM → PCIe (12.8 GB/s) → FPGA_GPR → AiM_GDDR6 banks → PU_MAC
+#
+# Energy values from cellar_power_calculator.py:
+#   DQ: 5.5 pJ/bit, PCIe: 4.4 pJ/bit
+#   DRAM read: 876.3/2 = 438.15 mW dynamic
+#   DRAM write: 1106.3/2 = 553.15 mW dynamic
+#   GB SRAM read: 0.279 mW, write: 0.325 mW
+
+{% set N_CHANNELS = N_CHANNELS | default(32) %}
+{% set FREQ_GHZ = FREQ_GHZ | default(2.0) %}
+
+arch:
+  nodes:
+  # Host-side: PCIe Gen3 x16 bottleneck (~12.8 GB/s effective)
+  - !Memory
+    name: HostDRAM
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    # PCIe interface: 4.4 pJ/bit, 12.8 GB/s
+    - {name: read,  energy: 4.4e-12, latency: 1 / (8 * 12.8e9)}
+    - {name: write, energy: 4.4e-12, latency: 1 / (8 * 12.8e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  # FPGA GPR: 512 KB activation/bias buffer (bridge between PCIe and AiM)
+  - !Memory
+    name: FPGA_GPR
+    size: 512 * 1024 * 8  # 512 KB
+    leak_power: 0
+    area: 0
+    actions:
+    # FPGA BRAM: fast local access
+    - {name: read,  energy: 0.5e-12, latency: 1 / (8 * 100e9)}
+    - {name: write, energy: 0.5e-12, latency: 1 / (8 * 100e9)}
+    tensors: {keep: All}
+
+  # GDDR6-AiM device: 32 channels, each with 16 banks
+  # Per-channel BW: 2GHz * 256bits * 2beats / 8 = 128 GB/s total
+  # Effective per-channel: 128e9 / 32 = 4 GB/s
+  - !Container
+    name: ChannelArray
+    spatial:
+    - {name: Z, fanout: {{N_CHANNELS}}, may_reuse: Nothing, min_usage: 1}
+
+  - !Memory
+    name: AiM_GDDR6
+    # Per channel: 128Mb / 32ch = 4 Mb = 512 KB per channel
+    size: 512 * 1024 * 8
+    leak_power: 0
+    area: 0
+    actions:
+    # DQ energy: 5.5 pJ/bit
+    # Per-channel bandwidth: 4 GB/s at full speed
+    # Read latency includes nCL=50 cycles @ 2GHz = 25ns overhead
+    # tBL = 1.25ns for 256-bit burst
+    - {name: read,  energy: 5.5e-12, latency: 1 / (8 * 4e9)}
+    - {name: write, energy: 5.5e-12, latency: 1 / (8 * 4e9)}
+    tensors: {keep: All}
+
+  # Per-channel bank array: 16 banks, each with a PU
+  - !Container
+    name: BankArray
+    spatial:
+    - {name: Y, fanout: 16, may_reuse: Nothing, min_usage: 1}
+
+  # Global Buffer per bank: 256-bit SRAM (holds activation vector)
+  # From power model: GB read 0.279 mW, write 0.325 mW
+  - !Memory
+    name: GlobalBuffer
+    size: 2 * 1024 * 8  # 2 KB effective per bank
+    leak_power: 0.067e-3  # 0.067 mW static (from SRAM_POWER)
+    area: 0
+    actions:
+    # Energy per access: power * tBL / bits
+    # GB read: 0.279 mW * 0.5ns / 256 bits ≈ 0.55 fJ/bit
+    # Latency: 0 (local to bank, pipelined with MAC)
+    - {name: read,  energy: 0.55e-15, latency: 0}
+    - {name: write, energy: 0.64e-15, latency: 0}
+    tensors: {keep: All}
+
+  # MAC unit: 1 MAC/cycle @ 2 GHz per bank
+  # Per PU: 2 GHz * 16 FP16 elements = 32 GFlop/s
+  # Total: 512 PUs * 32 GFlop/s = ~1 TFLOPS (matches paper: 32 * 31.25 GFlop/s)
+  # Energy: DRAM_POWER["ACT"] * tRC ≈ 66.3 mW * 44.5ns = 2.95 nJ per activation
+  # Per MAC op: ~0.1 pJ (dominated by DRAM access energy)
+  - !Compute
+    name: PU_MAC
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 16)}

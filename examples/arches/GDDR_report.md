@@ -72,17 +72,18 @@ We implemented the in-memory component of GDDR6-AIM, as well as a CPU based base
   Source: Simulator: CH_PER_DV = 32.00 (line 10); GDDR6_AiM_org preset: 32 channels
   Derivation: Smulator Jinja template N_CHANNELS = 32
   ────────────────────────────────────────
-  Component: AiM_GDDR6 size
-  Value: 512 KB/ch
-  Source: Simulator: 128 Mb total / 32 ch = 4 Mb = 512 KB per channel
-  Derivation: GDDR6_AiM_org: "128 << 10" density
+  Component: AiM_BankDRAM size (REVISED)
+  Value: 2 MB/bank
+  Source: Simulator: 8Gb total / 32 ch / 16 banks = ~2 MB per bank
+  Derivation: GDDR6_AiM_org density, divided by channels and banks
   ────────────────────────────────────────
-  Component: AiM_GDDR6 bandwidth
-  Value: 4 GB/s/ch
-  Source: Simulator: 2 GHz clock, 256-bit burst, 2 beats. Total: 128 GB/s / 32 ch
-  Derivation: Full speed 16 Gb/s/pin × 16 pins × 2 ch / 8 = 64 GB/s/chip
+  Component: AiM_BankDRAM bandwidth (REVISED)
+  Value: 32 GB/s per bank (internal)
+  Source: Simulator: nCCDL=2 cycles, 256-bit burst, 2 GHz clock
+  Derivation: 256 bits / 2 cycles × 2 GHz / 8 = 32 GB/s per bank
+  Note: Previously used 4 GB/s (external channel BW). See "Architecture Fix" below.
   ────────────────────────────────────────
-  Component: AiM_GDDR6 energy
+  Component: AiM_BankDRAM energy
   Value: 5.5 pJ/bit
   Source: Simulator: DQ_ENERGY = 5.5 (line 123)
   Derivation: Data bus energy per bit transferred
@@ -254,4 +255,90 @@ We implemented the in-memory component of GDDR6-AIM, as well as a CPU based base
   │ MAC command   │ Not specified  │ 1 cycle (from m_command_latencies)   │ Folded into       │
   │ latency       │                │                                      │ PU_MAC            │
   └───────────────┴────────────────┴──────────────────────────────────────┴───────────────────┘
+
+  ---
+  6. Architecture Fix: AiM Was 14x Slower Than CPU
+
+  Problem
+
+  Initial evaluation showed the AiM accelerator dramatically SLOWER than the CPU baseline:
+
+    Host CPU latency:         6,278 us
+    AiM (underclocked):      85,555 us  ->  0.07x (should be 6.73x)
+    AiM (full speed):        49,536 us  ->  0.13x (should be 16-18x)
+
+  Root Cause 1: Weights routed through PCIe
+
+  The original HostDRAM had `tensors: {keep: ~Intermediates, may_keep: All}`, which made weights
+  persistent at the top of the hierarchy. Weight data (629 MB per GPT-3 13B layer) was read
+  through the 12.8 GB/s PCIe link: 629 MB / 12.8 GB/s = 49,140 us — matching the observed
+  49,536 us AiM full-speed latency exactly.
+
+  In the actual hardware, weights are PRE-LOADED into DRAM banks before inference. During decode,
+  only activation vectors (~10 KB per layer) cross the PCIe bus.
+
+  Root Cause 2: DRAM modeled at external channel bandwidth, not internal bank bandwidth
+
+  The original AiM_GDDR6 memory sat ABOVE the BankArray spatial fanout with 4 GB/s per-channel
+  external bandwidth. With 16 banks sharing that bandwidth, each bank effectively had 0.25 GB/s
+  — slower than a single DDR4 channel.
+
+  The whole point of PIM is that each bank reads its own local DRAM array independently. From the
+  aim_simulator timing preset (GDDR6.cpp):
+    - nCCDL = 2 cycles between column accesses
+    - Access width: 256 bits per burst
+    - At 2 GHz: 256 bits / 2 cycles = 32 GB/s per bank
+    - 512 banks × 32 GB/s = 16 TB/s aggregate internal bandwidth
+
+  The external channel bandwidth (32 × 4 GB/s = 128 GB/s) is 125x less than the internal
+  aggregate — this bandwidth gap IS the PIM value proposition.
+
+  Changes Made to gddr6aim_aim.yaml
+
+  Change 1: Moved DRAM below BankArray spatial fanout
+
+  Before (broken):
+    ChannelArray [32×]
+      AiM_GDDR6 (4 GB/s per channel, shared by 16 banks)
+        BankArray [16×]
+          GlobalBuffer → PU_MAC
+
+  After (fixed):
+    ChannelArray [32×]
+      BankArray [16×]
+        AiM_BankDRAM (32 GB/s per bank, independent)
+          GlobalBuffer → PU_MAC
+
+  Each of the 512 banks now has its own independent AiM_BankDRAM with 32 GB/s bandwidth.
+
+  Change 2: Weight tensor placement
+
+  Before:
+    HostDRAM:     tensors: {keep: ~Intermediates, may_keep: All}     (weights kept here)
+    AiM_GDDR6:    tensors: {keep: All}                               (no preference)
+
+  After:
+    HostDRAM:     tensors: {keep: ~Intermediates - weight, may_keep: All}  (weights excluded)
+    FPGA_GPR:     tensors: {keep: ~weight, may_keep: All}                  (weights bypass)
+    AiM_BankDRAM: tensors: {keep: weight, may_keep: All}                   (weights live here)
+
+  Change 3: Internal bandwidth from aim_simulator timing
+
+  Before: latency: 1 / (8 * 4e9)              — 4 GB/s external channel BW
+  After:  latency: 1 / (8 * 256/2 * 2e9 / 8)  — 32 GB/s internal bank BW
+
+  Derived from nCCDL=2, 256-bit burst, 2 GHz clock (GDDR6.cpp timing preset).
+
+  Bandwidth Comparison
+
+  ┌────────────────────┬────────────────┬────────────────┬──────────────────────┐
+  │       Path         │    Before      │     After      │       Source         │
+  ├────────────────────┼────────────────┼────────────────┼──────────────────────┤
+  │ HostDRAM (PCIe)    │ 12.8 GB/s      │ 12.8 GB/s      │ PCIe Gen3 x16       │
+  ├────────────────────┼────────────────┼────────────────┼──────────────────────┤
+  │ Per-bank DRAM read │ 0.25 GB/s      │ 32 GB/s        │ nCCDL=2 @ 2 GHz     │
+  │                    │ (4/16 shared)  │ (independent)  │                      │
+  ├────────────────────┼────────────────┼────────────────┼──────────────────────┤
+  │ Aggregate internal │ 128 GB/s       │ 16 TB/s        │ 512 banks × 32 GB/s │
+  └────────────────────┴────────────────┴────────────────┴──────────────────────┘
 

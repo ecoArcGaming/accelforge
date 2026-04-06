@@ -94,16 +94,14 @@ def evaluate():
     # --- AiM full speed ---
     print_separator("GDDR6-AiM (32ch, 512 PUs, full speed 16 Gb/s/pin)")
     print("  Running AiM mapper...")
-    aim_full = run_mapper(AIM_ARCH, {**base_params, "N_CHANNELS": 32, "FREQ_GHZ": 2.0})
+    aim_full = run_mapper(AIM_ARCH, {**base_params, "N_PUS": 512, "FREQ_GHZ": 2.0})
     print_result("AiM Full", aim_full, SCALE)
 
-    # --- AiM underclocked (2 Gb/s/pin → 0.25 GHz effective) ---
-    print_separator("GDDR6-AiM (32ch, 512 PUs, underclocked 2 Gb/s/pin)")
+    # --- AiM underclocked (2 Gb/s/pin, 4 channels × 16 banks = 64 PUs) ---
+    print_separator("GDDR6-AiM (64 PUs, underclocked 2 Gb/s/pin)")
     print("  Running AiM mapper (underclocked)...")
-    # At 2 Gb/s/pin: per-channel BW = 2*16*2/8 = 8 GB/s... but per pin = 2 Gb/s
-    # vs full speed 16 Gb/s: bandwidth scales by 2/16 = 0.125x
-    # Compute clock also scales: 0.25 GHz
-    aim_slow = run_mapper(AIM_ARCH, {**base_params, "N_CHANNELS": 4, "FREQ_GHZ": 0.25})
+    # At 2 Gb/s/pin: clock scales to 0.25 GHz, 4 channels active = 64 PUs
+    aim_slow = run_mapper(AIM_ARCH, {**base_params, "N_PUS": 64, "FREQ_GHZ": 0.25})
     print_result("AiM Slow", aim_slow, SCALE)
 
     # --- Summary ---

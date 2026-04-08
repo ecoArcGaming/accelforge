@@ -21,8 +21,8 @@ arch:
     actions:
     # Aggregate internal BW: N_PUS * 32 GB/s per bank
     # Using per-bank rate here; spatial fanout below will divide work
-    - {name: read,  energy: 5.5e-12, latency: 1 / (8 * {{N_PUS}} * 256 / 2 * {{FREQ_GHZ}}e9 / 8)}
-    - {name: write, energy: 5.5e-12, latency: 1 / (8 * {{N_PUS}} * 256 / 2 * {{FREQ_GHZ}}e9 / 8)}
+    - {name: read,  energy: 5.5e-12, latency: 1 / ({{N_PUS}} * 256 * {{FREQ_GHZ}}e9) 
+    - {name: write, energy: 5.5e-12, latency: 1 / ({{N_PUS}} * 256 * {{FREQ_GHZ}}e9)
     tensors: {keep: ~Intermediates, may_keep: All}
 
   - !Container
@@ -36,8 +36,8 @@ arch:
     leak_power: 0.067e-3
     area: 0
     actions:
-    - {name: read,  energy: 0.55e-15, latency: 0}
-    - {name: write, energy: 0.64e-15, latency: 0}
+    - {name: read,  energy: 0.139e-12, latency: 0} # review paper for this energy, around 1e-12 ball park is probably good 
+    - {name: write, energy: 0.162e-12, latency: 0} # these were divided by an extra 256 it seems 
     tensors: {keep: All}
 
   - !Compute

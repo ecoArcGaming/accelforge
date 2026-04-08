@@ -1,0 +1,138 @@
+# Hybrid TPU + GDDR6-AiM Architecture
+#
+# Two compute paths from shared main memory:
+#   1. TPU path (Fork): high compute throughput, limited memory BW
+#      - For compute-bound workloads (large batch matmuls, convolutions)
+#   2. AiM path (main hierarchy): massive internal BW, moderate compute
+#      - For memory-bound workloads (decode-phase matvec, embedding lookups)
+#
+# The mapper evaluates each einsum on both paths and selects the better one.
+#
+# Hierarchy:
+#   MainMemory (HBM, shared)
+#     ├── Fork: TPU path
+#     │     TPU_GlobalBuffer (128 MB)
+#     │       TPU_LocalBuffer [4× spatial]
+#     │         ProcessingElement [128×128 spatial]
+#     │           Register → TPU_MAC
+#     └── AiM path (main hierarchy continues)
+#           AiM_BankDRAM [512× spatial PU array]
+#             AiM_GlobalBuffer (2 KB per PU)
+#               PU_MAC
+
+{% set N_PUS = N_PUS | default(512) %}
+{% set AIM_FREQ_GHZ = AIM_FREQ_GHZ | default(2.0) %}
+
+arch:
+  nodes:
+  # =========================================================================
+  # Shared Main Memory: HBM (serves both TPU and AiM paths)
+  # TPU v4i: 8 × 614 GB/s channels. AiM weights also sourced from here
+  # for initial loading, but once in AiM_BankDRAM they stay local.
+  # =========================================================================
+  - !Memory
+    name: MainMemory
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  # =========================================================================
+  # TPU Path (Fork) — high compute, moderate memory BW
+  # From tpu_v4i.yaml: 128×128 systolic array, 128 MB global buffer
+  # =========================================================================
+  - !Fork
+    nodes:
+    - !Memory
+      name: TPU_GlobalBuffer
+      size: 1024 * 1024 * 128 * 8  # 128 MB
+      total_latency: max(read_latency, write_latency)
+      leak_power: 0
+      area: 112e-6  # 112 mm²
+      actions:
+      - {name: read,  energy: 1.88e-12, latency: 1 / (8 * 2048e9)}
+      - {name: write, energy: 2.36e-12, latency: 1 / (8 * 1024e9)}
+      tensors: {keep: ~MainMemory.tensors, may_keep: All}
+
+    - !Memory
+      name: TPU_LocalBuffer
+      spatial: [{name: Z, fanout: 4, may_reuse: Nothing, min_usage: 1}]
+      size: 1024 * 1024 * 4 * 8  # 4 MB
+      leak_power: 0
+      area: 50e-6  # 50 mm²
+      actions:
+      - {name: read,  energy: 0.249e-12, latency: 0}
+      - {name: write, energy: 0.293e-12, latency: 0}
+      tensors: {keep: input | output}
+
+    - !Compute
+      name: TPU_ScalarUnit
+      area: 10e-6
+      leak_power: 0
+      actions:
+      - {name: compute, energy: 0, latency: 1 / 1.05e9 / 128}
+      enabled: len(All) == 2
+
+    - !Container
+      name: ProcessingElement
+      spatial:
+      - {name: reuse_input, fanout: 128, may_reuse: input, reuse: input, min_usage: 1}
+      - {name: reuse_output, fanout: 128, may_reuse: output, reuse: output, min_usage: 1}
+
+    - !Memory
+      name: TPU_Register
+      size: weight.bits_per_value if weight else 0
+      area: 1e-11
+      leak_power: 0
+      actions:
+      - {name: read,  energy: 0, latency: 0}
+      - {name: write, energy: 0, latency: 0}
+      tensors: {keep: weight}
+
+    - !Compute
+      name: TPU_MAC
+      leak_power: 0
+      area: 9e-11
+      actions:
+      - {name: compute, energy: 0.084e-12, latency: 1 / 1.05e9}
+      enabled: len(All) == 3
+
+  # =========================================================================
+  # AiM Path (main hierarchy) — massive internal BW, moderate compute
+  # 512 independent banks, each with 32 GB/s local DRAM + MAC PU
+  # =========================================================================
+  - !Memory
+    name: AiM_BankDRAM
+    size: inf
+    leak_power: 0
+    area: 0
+    actions:
+    # Aggregate internal BW: N_PUS × 256 bits / 2 cycles × FREQ
+    - {name: read,  energy: 5.5e-12, latency: 1 / ({{N_PUS}} * 256 / 2 * {{AIM_FREQ_GHZ}}e9)}
+    - {name: write, energy: 5.5e-12, latency: 1 / ({{N_PUS}} * 256 / 2 * {{AIM_FREQ_GHZ}}e9)}
+    tensors: {keep: All}
+
+  - !Container
+    name: PU_Array
+    spatial:
+    - {name: Y, fanout: {{N_PUS}}, may_reuse: Nothing, min_usage: 1}
+
+  - !Memory
+    name: AiM_GlobalBuffer
+    size: 2 * 1024 * 8  # 2 KB per PU
+    leak_power: 0.067e-3
+    area: 0
+    actions:
+    - {name: read,  energy: 0.139e-12, latency: 0}
+    - {name: write, energy: 0.162e-12, latency: 0}
+    tensors: {keep: All}
+
+  - !Compute
+    name: PU_MAC
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{AIM_FREQ_GHZ}}e9 * 16)}

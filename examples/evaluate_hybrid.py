@@ -32,6 +32,7 @@ def get_compute_unit(result, einsum_name: str) -> str:
             return "AiM"
     # Fallback: check per-component energy
     energy_by_comp = result.energy(per_component=True)
+    print(energy_by_comp)
     tpu_energy = sum(e for c, e in energy_by_comp.items()
                      if c.startswith("TPU_") and e > 0)
     aim_energy = sum(e for c, e in energy_by_comp.items()

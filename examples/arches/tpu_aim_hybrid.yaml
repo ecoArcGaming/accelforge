@@ -10,7 +10,7 @@
 #             AiM_GlobalBuffer (2 KB per PU)
 #               PU_MAC
 
-{% set N_PUS = N_PUS | default(512) %}
+{% set N_PUS = N_PUS | default(256) %}
 {% set FREQ_GHZ = FREQ_GHZ | default(2.0) %}
 
 arch:

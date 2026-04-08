@@ -38,23 +38,39 @@ def print_separator(title: str) -> None:
     print(f"{'=' * 64}")
 
 
+def _pick(val, idx=None):
+    """If val is a list (Pareto set), pick element at idx (default: 0)."""
+    if isinstance(val, list):
+        return val[idx if idx is not None else 0]
+    return val
+
+
+def _best_latency_idx(result):
+    """Return index of Pareto point with minimum latency, or None."""
+    lat = result.latency()
+    if isinstance(lat, list):
+        return min(range(len(lat)), key=lambda i: lat[i])
+    return None
+
+
 def print_result(name, result, scale=1.0):
-    energy = result.energy() * scale
-    latency = result.latency() * scale
+    idx = _best_latency_idx(result)
+    energy = _pick(result.energy(), idx) * scale
+    latency = _pick(result.latency(), idx) * scale
     print(f"\n  [{name}] Energy: {energy:.6e} J, Latency: {latency:.6e} s")
 
     energy_by_comp = result.energy(per_component=True)
     print(f"  {'Component':<20} {'Energy (J)':>14}")
     print(f"  {'-' * 36}")
-    for comp, e in sorted(energy_by_comp.items(), key=lambda x: -x[1]):
-        print(f"  {comp:<20} {e * scale:>14.6e}")
+    for comp, e in sorted(energy_by_comp.items(), key=lambda x: -_pick(x[1], idx)):
+        print(f"  {comp:<20} {_pick(e, idx) * scale:>14.6e}")
 
     energy_by_ein = result.energy(per_einsum=True)
     latency_by_ein = result.latency(per_einsum=True)
     print(f"\n  {'Einsum':<20} {'Energy (J)':>14} {'Latency (s)':>14}")
     print(f"  {'-' * 50}")
     for ein in energy_by_ein:
-        print(f"  {ein:<20} {energy_by_ein[ein] * scale:>14.6e} {latency_by_ein.get(ein, 0) * scale:>14.6e}")
+        print(f"  {ein:<20} {_pick(energy_by_ein[ein], idx) * scale:>14.6e} {_pick(latency_by_ein.get(ein, 0), idx) * scale:>14.6e}")
 
 
 def run_mapper(arch, params):
@@ -105,9 +121,9 @@ def evaluate():
     print_result("AiM Slow", aim_slow, SCALE)
 
     # --- Summary ---
-    host_lat = host_result.latency() * SCALE
-    aim_full_lat = aim_full.latency() * SCALE
-    aim_slow_lat = aim_slow.latency() * SCALE
+    host_lat = _pick(host_result.latency(), _best_latency_idx(host_result)) * SCALE
+    aim_full_lat = _pick(aim_full.latency(), _best_latency_idx(aim_full)) * SCALE
+    aim_slow_lat = _pick(aim_slow.latency(), _best_latency_idx(aim_slow)) * SCALE
 
     print_separator("Per-Layer Speedup Summary (Scaled to GPT-3 13B)")
     print(f"  Host CPU latency:         {host_lat * 1e6:>12.2f} us")

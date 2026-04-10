@@ -1,24 +1,11 @@
-# Hierarchy:
-#   MainMemory (HBM, shared)
-#     ├── Fork: TPU path
-#     │     TPU_GlobalBuffer (128 MB)
-#     │       TPU_LocalBuffer [4× spatial]
-#     │         ProcessingElement [128×128 spatial]
-#     │           Register → TPU_MAC
-#     └── AiM path (main hierarchy continues)
-#           AiM_BankDRAM [512× spatial PU array]
-#             AiM_GlobalBuffer (2 KB per PU)
-#               PU_MAC
-
-{% set N_PUS = N_PUS | default(256) %}
-{% set FREQ_GHZ = FREQ_GHZ | default(2.0) %}
+{% set FREQ_GHZ = FREQ_GHZ | default(1.0) %}
 
 arch:
   nodes:
   # Shared Main Memory: HBM
   - !Memory
     name: MainMemory
-    size: inf
+    size: 8 * 1024 * 1024 * 1024 * 8 # 8 GB HBM
     leak_power: 0
     area: 0
     actions:
@@ -83,11 +70,10 @@ arch:
       - {name: compute, energy: 0.084e-12, latency: 1 / 1.05e9}
       enabled: len(All) == 3
 
-
+  # aim accelerator 
   - !Memory
     name: GlobalBuffer
     size: 2 * 1024 * 8   # 2 KB gloabl buffer
-    total_latency: max(read_latency, write_latency)
     leak_power: 0
     # Rough estimate: 16384 bits 
     area: 2.08e-9 # per bit area in m^2:  assume SOTA from https://www.mdpi.com/2079-9268/2/1/1?utm_source=researchgate.net&utm_medium=article 
@@ -100,19 +86,19 @@ arch:
     #   Write: 0.325 mW  
     - {name: read,  energy: 0.139e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
     - {name: write, energy: 0.162e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
-    tensors: {keep: All}
+    tensors: {keep: input | output}
 
   - !Container
     name: PU_Array # 16 x 16 in parallel
     spatial:
-    - {name: X, fanout: 16, may_reuse: input}
-    - {name: Y, fanout: 16, may_reuse: input}
+      - {name: reuse_input, fanout: 16, may_reuse: input, reuse: input, min_usage: 1}
+      - {name: reuse_output, fanout: 16, may_reuse: output, reuse: output, min_usage: 1}
 
   - !Compute
     name: PU_MAC
     leak_power: 0
     area: 0.19e-6 / 16 # 0.19 mm² / 16 PUs
     actions:
-    # 16 BF16 MACs per cycle at FREQ 
+    # 32 GFLOP/s at FREQ_GHz, each FLOP is 16 BF16 MACs
     # Energy: 0.1 pJ/op estimated 
-    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 16)}
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 32 * 16)}

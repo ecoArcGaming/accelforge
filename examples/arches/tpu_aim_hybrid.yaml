@@ -82,17 +82,18 @@ arch:
     # 256-bit access in 1 cycle 
     # Per-bit latency: 1 cycle / 256 bits = 1 / (256 * FREQ)
     # Per-bit energy: power * time / bits = P * (1/FREQ) 
+    # assume high bandwidth, low latency
     #   Read:  0.279 mW  
     #   Write: 0.325 mW  
-    - {name: read,  energy: 0.139e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
-    - {name: write, energy: 0.162e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
-    tensors: {keep: input | output}
+    - {name: read,  energy: 0.139e-12, latency: 0}
+    - {name: write, energy: 0.162e-12, latency: 0}
+    tensors: {keep: All}
 
   - !Container
     name: PU_Array # 16 x 16 in parallel
     spatial:
       - {name: reuse_input, fanout: 16, may_reuse: input, reuse: input, min_usage: 1}
-      - {name: reuse_output, fanout: 16, may_reuse: output, reuse: output, min_usage: 1}
+      - {name: reuse_output, fanout: 16}
 
   - !Compute
     name: PU_MAC
@@ -101,4 +102,4 @@ arch:
     actions:
     # 32 GFLOP/s at FREQ_GHz, each FLOP is 16 BF16 MACs
     # Energy: 0.1 pJ/op estimated 
-    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 32 * 16)}
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 32 )}

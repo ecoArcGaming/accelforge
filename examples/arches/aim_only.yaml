@@ -1,0 +1,36 @@
+{% set FREQ_GHZ = FREQ_GHZ | default(1.0) %}
+
+arch:
+  nodes:
+  - !Memory
+    name: MainMemory
+    size: 8 * 1024 * 1024 * 1024 * 8
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: GlobalBuffer
+    size: 2 * 1024 * 8
+    leak_power: 0
+    area: 2.08e-9
+    actions:
+    - {name: read,  energy: 0.139e-12, latency: 0}
+    - {name: write, energy: 0.162e-12, latency: 0}
+    tensors: {keep: All}
+
+  - !Container
+    name: PU_Array
+    spatial:
+      - {name: reuse_input, fanout: 16, may_reuse: input, reuse: input, min_usage: 1} # set reuse to map faster
+      - {name: reuse_output, fanout: 16}
+
+  - !Compute
+    name: PU_MAC
+    leak_power: 0
+    area: 0.19e-6 / 16
+    actions:
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 16)}

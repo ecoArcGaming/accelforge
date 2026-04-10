@@ -1,0 +1,75 @@
+
+arch:
+  nodes:
+  - !Toll
+      name: TPU_link
+      direction: up_and_down
+      leak_power: 0
+      area: 0
+      tensors: {keep: All}
+      # Read action is used both for transfers main memory -> traditional accelerator and
+      # traditional accelerator -> main memory.
+      actions: [{name: read, energy: 0, latency: (1 / 1e6)}]
+  - !Memory
+    name: MainMemory
+    size: 8 * 1024 * 1024 * 1024 * 8
+    leak_power: 0
+    area: 0
+    actions:
+    - {name: read,  energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: TPU_GlobalBuffer
+    size: 1024 * 1024 * 128 * 8
+    total_latency: max(read_latency, write_latency)
+    leak_power: 0
+    area: 112e-6
+    actions:
+    - {name: read,  energy: 1.88e-12, latency: 1 / (8 * 2048e9)}
+    - {name: write, energy: 2.36e-12, latency: 1 / (8 * 1024e9)}
+    tensors: {keep: ~MainMemory.tensors, may_keep: All}
+
+  - !Memory
+    name: TPU_LocalBuffer
+    spatial: [{name: Z, fanout: 4, may_reuse: Nothing, min_usage: 1}]
+    size: 1024 * 1024 * 4 * 8
+    leak_power: 0
+    area: 50e-6
+    actions:
+    - {name: read,  energy: 0.249e-12, latency: 0}
+    - {name: write, energy: 0.293e-12, latency: 0}
+    tensors: {keep: input | output}
+
+  - !Compute
+    name: TPU_ScalarUnit
+    area: 10e-6
+    leak_power: 0
+    actions:
+    - {name: compute, energy: 0, latency: 1 / 1.05e9 / 128}
+    enabled: len(All) == 2
+
+  - !Container
+    name: ProcessingElement
+    spatial:
+    - {name: reuse_input, fanout: 128, may_reuse: input, reuse: input, min_usage: 1}
+    - {name: reuse_output, fanout: 128, may_reuse: output, reuse: output, min_usage: 1}
+
+  - !Memory
+    name: TPU_Register
+    size: weight.bits_per_value if weight else 0
+    area: 1e-11
+    leak_power: 0
+    actions:
+    - {name: read,  energy: 0, latency: 0}
+    - {name: write, energy: 0, latency: 0}
+    tensors: {keep: weight}
+
+  - !Compute
+    name: TPU_MAC
+    leak_power: 0
+    area: 9e-11
+    actions:
+    - {name: compute, energy: 0.084e-12, latency: 1 / 1.05e9}
+    enabled: len(All) == 3

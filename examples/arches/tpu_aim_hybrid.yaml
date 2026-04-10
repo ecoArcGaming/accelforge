@@ -16,14 +16,13 @@ arch:
   # From tpu_v4i.yaml: 128×128 systolic array, 128 MB global buffer
   - !Fork
     nodes:
+
     - !Toll
-      name: TPU_link
-      direction: up_and_down
+      name: OffChipLink
       leak_power: 0
+      direction: "up_and_down"
       area: 0
       tensors: {keep: All}
-      # Read action is used both for transfers main memory -> traditional accelerator and
-      # traditional accelerator -> main memory.
       actions: [{name: read, energy: 0, latency: (1 / 1e6)}]
 
     - !Memory

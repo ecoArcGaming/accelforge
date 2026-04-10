@@ -149,6 +149,7 @@ def prune_with_tolerance(
     objective_tolerance: float,
     resource_usage_tolerance: float,
     print_progress: bool = True,
+    is_last: bool = False,
 ):
     if objective_tolerance == 0 and resource_usage_tolerance == 0:
         return pmappings
@@ -175,6 +176,9 @@ def prune_with_tolerance(
         result[einsum_name].append(pg)
 
     new_n = sum(len(pg.mappings) for p in result.values() for pg in p)
+    if new_n == prev_n and not is_last:
+        return None
+
     if print_progress:
         print(f"Dirty joining uses {new_n / prev_n * 100:.2f}% of the pmappings")
 
@@ -215,7 +219,11 @@ def join_strategy_2(
                 objective_tolerance=threshold,
                 resource_usage_tolerance=resource_usage_tolerance,
                 print_progress=print_progress,
+                is_last=i == len(thresholds) - 1,
             )
+            if cur_compressed is None:
+                continue
+
             joined = join_pmappings(
                 cur_compressed,
                 spec,
@@ -271,7 +279,19 @@ def multi_strategy_join(
             _pmapping_row_filter_function,
         )
 
-    resource_usage_thresholds = [0.02, 0.01, 0.001, 0.0001, 0]
+    resource_usage_thresholds = [
+        0.2,
+        0.1,
+        0.05,
+        0.02,
+        0.01,
+        0.005,
+        0.002,
+        0.001,
+        0.0001,
+        0.00001,
+        0,  # Give up, do full precision join
+    ]
     for i, threshold in enumerate(resource_usage_thresholds):
         for p in compressed.values():
             for pg in p:
@@ -342,6 +362,7 @@ def clean_compress_and_join_pmappings(
             lambda x: pmappings.pmapping_objects[einsum_name][x]
         )
     joined._data = _fillna_and__numeric_cast(joined.data, 0).reset_index(drop=True)
+    joined._data = joined._data.copy()  # Defrag
 
     rank_variable_bounds = get_rank_variable_bounds_for_all_einsums(pmappings.spec)
     einsum_names = list(einsum2pmappings.keys())
@@ -506,9 +527,9 @@ def join_pmappings(
     combine_reservations = spec.mapper._combine_reservations
     _runtime_log_file = spec.mapper._runtime_log_file
 
-    assert skip_invalid, (
-        "Joining only joins valid compatibilities in the for loops in this function."
-    )
+    assert (
+        skip_invalid
+    ), "Joining only joins valid compatibilities in the for loops in this function."
 
     drop_valid_reservations = not (Metrics.RESOURCE_USAGE & metrics)
     ignored_resources = oset()
@@ -927,13 +948,13 @@ def join_pmappings(
         #     f"\tCombining {sum(len(s) for s in left.values())}({len(left)}) x {sum(len(s) for s in right.values())}({len(right)}) -> {len(combined)}"
         # )
 
-        # nmappings = sum(len(s.mappings.data) for s in combined)
-        # for_einsum_text = f"for Einsum {right_einsum}"
-        # logger.info(f"\tNumber of groups {for_einsum_text}: {len(combined)}")
-        # # for c in combined:
-        # #     print(f"\t\t{c.compatibility}")
-        # logger.info(f"\tNumber of mappings {for_einsum_text}: {nmappings}")
-        # logger.info(
+        nmappings = sum(len(s.mappings.data) for s in combined)
+        for_einsum_text = f"for Einsum {right_einsum}"
+        # print(f"\tNumber of groups {for_einsum_text}: {len(combined)}")
+        # for c in combined:
+        #     print(f"\t\t{c.compatibility}")
+        # print(f"\tNumber of mappings {for_einsum_text}: {nmappings}")
+        # print(
         #     f"\tMappings per group {for_einsum_text}: {nmappings / len(combined)}"
         # )
         # logger.info(

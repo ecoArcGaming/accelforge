@@ -15,8 +15,7 @@
 
 arch:
   nodes:
-  # Shared Main Memory: HBM (serves both TPU and AiM paths)
-  # TPU v4i: 8 × 614 GB/s channels. 
+  # Shared Main Memory: HBM
   - !Memory
     name: MainMemory
     size: inf
@@ -84,30 +83,15 @@ arch:
       - {name: compute, energy: 0.084e-12, latency: 1 / 1.05e9}
       enabled: len(All) == 3
 
-  # GDDR6-AiM
-  # 512 independent banks, each with 32 GB/s local DRAM + MAC PU
-  - !Memory
-    name: AiM_BankDRAM
-    size: inf
-    leak_power: 0
-    area: 0
-    actions:
-    - {name: read,  energy: 5.5e-12, latency: 2 / ({{N_PUS}} * 256 * {{FREQ_GHZ}}e9)} # 2 cycles per read or write
-    - {name: write, energy: 5.5e-12, latency: 2 / ({{N_PUS}} * 256 * {{FREQ_GHZ}}e9)}
-    tensors: {keep: ~Intermediates, may_keep: All}
-
-  - !Container
-    name: PU_Array
-    spatial:
-    # input broadcast across PUs,
-    - {name: Z, fanout: {{N_PUS}}, may_reuse: input}
 
   - !Memory
     name: GlobalBuffer
-    size: 2 * 1024 * 8   # 2 KB per PU (paper Section 2A)
+    size: 2 * 1024 * 8   # 2 KB gloabl buffer
     total_latency: max(read_latency, write_latency)
     leak_power: 0
-    area: 0
+    # Rough estimate: 16384 bits 
+    area: 2.08e-9 # per bit area in m^2:  assume SOTA from https://www.mdpi.com/2079-9268/2/1/1?utm_source=researchgate.net&utm_medium=article 
+    # 2 * 1024 * 8 * 0.127 um^2
     actions:
     # 256-bit access in 1 cycle 
     # Per-bit latency: 1 cycle / 256 bits = 1 / (256 * FREQ)
@@ -118,10 +102,16 @@ arch:
     - {name: write, energy: 0.162e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
     tensors: {keep: All}
 
+  - !Container
+    name: PU_Array # 16 x 16 in parallel
+    spatial:
+    - {name: X, fanout: 16, may_reuse: input}
+    - {name: Y, fanout: 16, may_reuse: input}
+
   - !Compute
     name: PU_MAC
     leak_power: 0
-    area: 0
+    area: 0.19e-6 / 16 # 0.19 mm² / 16 PUs
     actions:
     # 16 BF16 MACs per cycle at FREQ 
     # Energy: 0.1 pJ/op estimated 

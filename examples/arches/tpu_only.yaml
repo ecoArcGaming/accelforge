@@ -2,14 +2,12 @@
 arch:
   nodes:
   - !Toll
-      name: TPU_link
-      direction: up_and_down
+      name: OffChipLink
       leak_power: 0
+      direction: "up_and_down"
       area: 0
-      tensors: {keep: All}
-      # Read action is used both for transfers main memory -> traditional accelerator and
-      # traditional accelerator -> main memory.
-      actions: [{name: read, energy: 0, latency: (1 / 1e6)}]
+      tensors: {keep: All & Above}
+      actions: [{name: read, energy: 0, latency: (1 / 1e6)}] # a high latency to punish off chip TPU
   - !Memory
     name: MainMemory
     size: 8 * 1024 * 1024 * 1024 * 8

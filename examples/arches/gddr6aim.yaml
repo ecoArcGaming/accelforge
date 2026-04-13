@@ -1,0 +1,48 @@
+{% set FREQ_GHZ = FREQ_GHZ | default(1.0) %}
+
+arch:
+  nodes:
+  - !Memory
+    name: MainMemory
+    size: 8 * 1024 * 1024 * 1024 * 8 # 8 GB HBM
+    leak_power: 0
+    area: 0 # Don't include off-chip DRAM area
+    actions:
+      # Upper end of the range from the TPU paper. The lower end came from their
+      # reference, and they said it left out some things.
+    - {name: read, energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    - {name: write, energy: 7.03e-12, latency: 1 / (8 * 614e9)}
+    tensors: {keep: ~Intermediates, may_keep: All}
+
+  - !Memory
+    name: AiM_GlobalBuffer
+    size: 2 * 1024 * 8   # 2 KB gloabl buffer
+    leak_power: 0
+    # Rough estimate: 16384 bits
+    area: 2.08e-9 # per bit area in m^2:  assume SOTA from https://www.mdpi.com/2079-9268/2/1/1?utm_source=researchgate.net&utm_medium=article
+    # 2 * 1024 * 8 * 0.127 um^2
+    actions:
+    # 256-bit access in 1 cycle
+    # Per-bit latency: 1 cycle / 256 bits = 1 / (256 * FREQ)
+    # Per-bit energy: power * time / bits = P * (1/FREQ)
+    # assume high bandwidth, low latency
+    #   Read:  0.279 mW
+    #   Write: 0.325 mW
+    - {name: read,  energy: 0.139e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
+    - {name: write, energy: 0.162e-12, latency: 1 / (256 * {{FREQ_GHZ}}e9)}
+    tensors: {keep: All}
+
+  - !Container
+    name: PU_Array # 16 x 16 in parallel
+    spatial:
+      - {name: reuse_input, fanout: 16, may_reuse: input, reuse: input, min_usage: 1}
+      - {name: reuse_output, fanout: 16}
+
+  - !Compute
+    name: PU_MAC
+    leak_power: 0
+    area: 0.19e-6 / 16 # 0.19 mm² / 16 PUs
+    actions:
+    # 32 GFLOP/s at FREQ_GHz, 2 OPs is one MAC
+    # Energy: 0.1 pJ/op estimated
+    - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 16)}

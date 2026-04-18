@@ -21,7 +21,7 @@ arch:
       direction: "up_and_down"
       area: 0
       tensors: {keep: All & Above}
-      actions: [{name: read, energy: 7.03e-12, latency: 1/(8*32e9)}] # DRAM external bandwidth, energy from TPU
+      actions: [{name: read, energy: 7.50e-12, latency: 1/(8*32e9)}] # DRAM external bandwidth, energy from Chirag paper (480pJ/ 64 bit)
     - !Memory
       name: TPU_GlobalBuffer
       size: 1024 * 1024 * 128 * 8  # 128 MB
@@ -82,7 +82,7 @@ arch:
     size: 2 * 1024 * 8   # 2 KB gloabl buffer
     component_class: SmartBufferSRAM 
     tensors: {may_keep: All} # may_keep would help with energy
-    extra_attributes_for_component_model: {tech_node: 40e-9} # assume standard 40 nm SRAM 
+    extra_attributes_for_component_model: {tech_node: 40e-9} # assume  40 nm SRAM, like in https://ieeexplore.ieee.org/document/9885904 
     # leak_power: 0
     # # Rough estimate: 16384 bits 
     # area: 2.08e-9 # per bit area in m^2:  assume SOTA from https://www.mdpi.com/2079-9268/2/1/1?utm_source=researchgate.net&utm_medium=article 

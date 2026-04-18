@@ -1,4 +1,6 @@
 {% set FREQ_GHZ = FREQ_GHZ | default(1.0) %}
+{% set AIM_BUFFER_KB = AIM_BUFFER_KB | default(2) %}
+{% set AIM_PU_FANOUT = AIM_PU_FANOUT | default(16) %}
 
 arch:
   nodes:
@@ -76,31 +78,24 @@ arch:
       - {name: compute, energy: 0.084e-12, latency: 1 / 1.05e9}
       enabled: len(All) == 3
 
-  # aim accelerator 
+  # aim accelerator — buffer size and PU fanout are swept
   - !Memory
     name: GlobalBuffer
-    size: 2 * 1024 * 8   # 2 KB gloabl buffer
-    component_class: SmartBufferSRAM 
-    tensors: {may_keep: All} # may_keep would help with energy
-    extra_attributes_for_component_model: {tech_node: 40e-9} # assume standard 40 nm SRAM 
-    # leak_power: 0
-    # # Rough estimate: 16384 bits 
-    # area: 2.08e-9 # per bit area in m^2:  assume SOTA from https://www.mdpi.com/2079-9268/2/1/1?utm_source=researchgate.net&utm_medium=article 
-    # actions:
-    # - {name: read, bits_per_action: 256}
-    # - {name: write, bits_per_action: 256}
+    size: {{AIM_BUFFER_KB}} * 1024 * 8   # AiM per-PU global buffer (bits)
+    component_class: SmartBufferSRAM
+    tensors: {may_keep: All}
+    extra_attributes_for_component_model: {tech_node: 40e-9} # assume standard 40 nm SRAM
 
   - !Container
-    name: PU_Array # 16 x 16 in parallel
+    name: PU_Array # AIM_PU_FANOUT × AIM_PU_FANOUT PUs
     spatial:
-      - {name: reuse_input, fanout: 16, may_reuse: input, reuse: input, min_usage: 1}
-      - {name: reuse_output, fanout: 16}
+      - {name: reuse_input, fanout: {{AIM_PU_FANOUT}}, may_reuse: input, reuse: input, min_usage: 1}
+      - {name: reuse_output, fanout: {{AIM_PU_FANOUT}}}
 
   - !Compute
     name: PU_MAC
     leak_power: 0
-    area: 0.19e-6 / 16 # 0.19 mm² / 16 PUs
+    area: 0.19e-6 / 16 # per-PU area (m²); from 0.19 mm² / 16 baseline
     actions:
-    # 32 GFLOP/s at FREQ_GHz, 2 OPs is one MAC
     # Energy: 0.1 pJ/op estimated
     - {name: compute, energy: 0.1e-12, latency: 1 / ({{FREQ_GHZ}}e9 * 16)}

@@ -52,5 +52,9 @@ arch:
   - !Compute # MAC unit
     name: MAC
     component_class: IntMAC
-    total_latency: compute_actions / 200e6
     extra_attributes_for_component_model: {multiplier_width: 8, adder_width: 16}
+    tech_node: # regular CMOS, but AiM on DRAM die (need reference that things are x% worse on DRAM than CMOS)
+    energy_scale: ..
+    latency_scale: ... 
+    area_scale:
+    leak_scale (or leak_power_scale): 
